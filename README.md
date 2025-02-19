@@ -138,7 +138,7 @@ LIST @aws_stage;
 ```sql
 DESC STAGE EXERCISE_DB.public.aws_stage; 
 ```
---create a table in the same data base to copy everything from aws we need to know the schema
+### Create a table in the same database to copy everything from aws, we need to know the schema
 
 ```sql
 CREATE OR REPLACE TABLE EXERCISE_DB.PUBLIC.CUSTOMER (
@@ -149,7 +149,7 @@ CREATE OR REPLACE TABLE EXERCISE_DB.PUBLIC.CUSTOMER (
     age INT,
     city VARCHAR)
 ```    
--- WE Check everything is there
+-- Verify Table Creation
 ```sql 
 SELECT * FROM EXERCISE_DB.PUBLIC.CUSTOMER;
 ``` 
