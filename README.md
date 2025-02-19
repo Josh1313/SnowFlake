@@ -1,131 +1,216 @@
-# Snowflake Warehouse Cheat Sheet
+# Snowflake Database Management and Data Loading
 
 ## Overview
-
-This guide will help you get started quickly with Snowflake Warehouse by providing a cheat sheet for basic operations. It includes instructions on creating a table, checking its contents, loading data from an S3 bucket, and managing external stages.
-
----
-
-## Getting Started
-
-### 1. Creating the Table (Metadata Definition)
-
-To create the `LOAN_PAYMENT` table, copy and run the following SQL command:
-
-```sql
-CREATE TABLE "OUR_FIRST_DB"."PUBLIC"."LOAN_PAYMENT" (
-  "Loan_ID" STRING,
-  "loan_status" STRING,
-  "Principal" STRING,
-  "terms" STRING,
-  "effective_date" STRING,
-  "due_date" STRING,
-  "paid_off_time" STRING,
-  "past_due_days" STRING,
-  "age" STRING,
-  "education" STRING,
-  "Gender" STRING
-);
-```
+This document provides an overview of managing external stages, creating tables, and loading data into Snowflake from an AWS S3 bucket. All SQL commands are included for easy execution.
 
 ---
 
-### 2. Checking if the Table is Empty
-
-Before loading data, ensure the table exists and is empty by running:
+## Database and Schema Setup
 
 ```sql
-USE DATABASE OUR_FIRST_DB;
-
-SELECT * FROM LOAN_PAYMENT;
-```
-
----
-
-### 3. Loading Data from an S3 Bucket
-
-To load data from an S3 bucket into the `LOAN_PAYMENT` table, execute the following command:
-
-```sql
-COPY INTO LOAN_PAYMENT
-    FROM s3://bucketsnowflakes3/Loan_payments_data.csv
-    file_format = (type = csv
-                   field_delimiter = ','
-                   skip_header=1);
-```
-
----
-
-### 4. Validating the Data Load
-
-After loading the data, confirm that it was inserted successfully by running:
-
-```sql
-SELECT * FROM LOAN_PAYMENT;
-```
-
----
-
-### 5. Managing External Stages
-
-#### Creating a Database for Stage Management
-
-```sql
+-- Create a database to manage stages, file formats, etc.
 CREATE OR REPLACE DATABASE MANAGE_DB;
 
+-- Create a schema for external stages
 CREATE OR REPLACE SCHEMA external_stages;
 ```
 
-#### Creating an External Stage
+---
+
+## Creating and Managing External Stages
+
+### Create an External Stage (AWS S3 Connection)
+An external stage is a connection to an AWS S3 bucket where files are stored.
 
 ```sql
 CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage
-    url='s3://bucketsnowflakes3'
-    credentials=(aws_key_id='ABCD_DUMMY_ID' aws_secret_key='1234abcd_key');
+    URL='s3://bucketsnowflakes3'
+    CREDENTIALS=(AWS_KEY_ID='ABCD_DUMMY_ID' AWS_SECRET_KEY='1234abcd_key');
 ```
 
-#### Describing the External Stage
-
+### Describe the External Stage
 ```sql
 DESC STAGE MANAGE_DB.external_stages.aws_stage;
 ```
 
-#### Altering the External Stage
-
+### Altering External Stage Credentials
 ```sql
-ALTER STAGE aws_stage
-    SET credentials=(aws_key_id='XYZ_DUMMY_ID' aws_secret_key='987xyz');
+ALTER STAGE MANAGE_DB.external_stages.aws_stage
+    SET CREDENTIALS=(AWS_KEY_ID='XYZ_DUMMY_ID' AWS_SECRET_KEY='987xyz');
 ```
 
-#### Creating a Publicly Accessible Staging Area
-
+### Public External Stage (No Credentials Needed)
 ```sql
 CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage
-    url='s3://bucketsnowflakes3';
+    URL='s3://bucketsnowflakes3';
 ```
 
-#### Listing Files in the Stage
-
+### List Files in the Stage
 ```sql
 LIST @aws_stage;
 ```
 
-#### Loading Data Using COPY Command
+---
+
+## Creating Tables
 
 ```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
-    FROM @aws_stage
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*';
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS (
+    ORDER_ID VARCHAR(30),
+    AMOUNT INT,
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(30),
+    SUBCATEGORY VARCHAR(30)
+);
+```
+
+### Verify Table Creation
+```sql
+SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS;
 ```
 
 ---
 
-## Notes
+## Copying Data into Snowflake Tables
 
-- Ensure you have the necessary permissions to create tables, stages, and load data.
-- Replace `s3://bucketsnowflakes3/Loan_payments_data.csv` and `s3://bucketsnowflakes3` with the correct S3 paths.
-- Modify field types as necessary based on the actual data format.
+### Basic Copy Command
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
+    FROM @aws_stage
+    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1);
+```
 
-This cheat sheet provides a quick start to working with Snowflake Warehouse. Happy querying! 🚀
+### Copy Command with Fully Qualified Stage Object
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
+    FROM @MANAGE_DB.external_stages.aws_stage
+    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1);
+```
+
+### List Files in S3 Bucket
+```sql
+LIST @MANAGE_DB.external_stages.aws_stage;
+```
+
+### Copy Specific File
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
+    FROM @MANAGE_DB.external_stages.aws_stage
+    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
+    FILES = ('OrderDetails.csv');
+```
+
+### Copy Using a Pattern (Wildcard)
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
+    FROM @MANAGE_DB.external_stages.aws_stage
+    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
+    PATTERN = '.*Order.*';
+```
+
+---
+
+## Data Transformation Using SQL Functions
+
+### Create a New Table with a Subset of Columns
+```sql
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
+    ORDER_ID VARCHAR(30),
+    AMOUNT INT
+);
+```
+
+### Copy with a SQL Transformation
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
+    FROM (
+        SELECT s.$1, s.$2 FROM @MANAGE_DB.external_stages.aws_stage s
+    )
+    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
+    FILES = ('OrderDetails.csv');
+```
+
+### Create a Table with Profitability Flag
+```sql
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
+    ORDER_ID VARCHAR(30),
+    AMOUNT INT,
+    PROFIT INT,
+    PROFITABLE_FLAG VARCHAR(30)
+);
+```
+
+### Copy with Profitability Calculation
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
+    FROM (
+        SELECT s.$1, s.$2, s.$3,
+        CASE WHEN CAST(s.$3 AS INT) < 0 THEN 'Not Profitable' ELSE 'Profitable' END
+        FROM @MANAGE_DB.external_stages.aws_stage s
+    )
+    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
+    FILES = ('OrderDetails.csv');
+```
+
+### Extracting a Substring from a Column
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
+    FROM (
+        SELECT s.$1, s.$2, s.$3, SUBSTRING(s.$5, 1, 5)
+        FROM @MANAGE_DB.external_stages.aws_stage s
+    )
+    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
+    FILES = ('OrderDetails.csv');
+```
+
+---
+
+## Additional Table Transformations
+
+### Reset Table with Auto-Increment ID
+```sql
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
+    ORDER_ID NUMBER AUTOINCREMENT START 1 INCREMENT 1,
+    AMOUNT INT,
+    PROFIT INT,
+    PROFITABLE_FLAG VARCHAR(30)
+);
+```
+
+### Copy Data with Auto-Increment ID
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX (PROFIT, AMOUNT)
+    FROM (
+        SELECT s.$2, s.$3
+        FROM @MANAGE_DB.external_stages.aws_stage s
+    )
+    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
+    FILES = ('OrderDetails.csv');
+```
+
+### Verify Data
+```sql
+SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
+SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX WHERE ORDER_ID > 15;
+```
+
+### Drop the Table if Needed
+```sql
+DROP TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX;
+```
+
+---
+
+## Cleanup
+If needed, remove an unwanted stage:
+
+```sql
+DROP STAGE IF EXISTS EXERCISE_DB.PUBLIC.EXERCISE_DB;
+```
+
+---
+
+## Conclusion
+This document provides a step-by-step guide for setting up external stages, managing data in Snowflake, and transforming data using SQL functions. Copy and execute the SQL commands as needed. Happy querying!
 
