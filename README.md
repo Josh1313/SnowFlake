@@ -20,7 +20,7 @@ CREATE OR REPLACE SCHEMA external_stages;
 ## Creating and Managing External Stages
 
 ### Create an External Stage (AWS S3 Connection)
-An external stage is a connection to an AWS S3 bucket where files are stored.
+An external stage is a connection to an AWS S3 bucket where files are stored in the below example with credentials.
 
 ```sql
 CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage
@@ -29,6 +29,7 @@ CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage
 ```
 
 ### Describe the External Stage
+
 ```sql
 DESC STAGE MANAGE_DB.external_stages.aws_stage;
 ```
@@ -45,14 +46,17 @@ CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage
     URL='s3://bucketsnowflakes3';
 ```
 
-### List Files in the Stage
+### List Files in the Stage 
+Meaning in the s3 bucket and also be mindfull to use @ before your stage-name @aws_stage
+
 ```sql
 LIST @aws_stage;
 ```
 
 ---
 
-## Creating Tables
+## Creating Orders Tables
+Remenber at this stage we know the schema 
 
 ```sql
 CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS (
@@ -75,6 +79,8 @@ SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS;
 ## Copying Data into Snowflake Tables
 
 ### Basic Copy Command
+Without declaring the database assuming you do so at the beggining of the workflow
+
 ```sql
 COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
     FROM @aws_stage
@@ -82,6 +88,7 @@ COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
 ```
 
 ### Copy Command with Fully Qualified Stage Object
+Declaring the database
 ```sql
 COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
     FROM @MANAGE_DB.external_stages.aws_stage
@@ -109,11 +116,63 @@ COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
     PATTERN = '.*Order.*';
 ```
 
+### Test 2 Do it yourself
+
+-- Create stage object, first step here database , public and the name that we asSign the stage
+
+```sql
+CREATE OR REPLACE STAGE EXERCISE_DB.public.aws_stage
+    url='s3://snowflake-assignments-mc/loadingdata';
+```
+-- List files in stage
+```sql
+LIST @EXERCISE_DB.public.aws_stage;
+```
+
+```sql
+LIST @aws_stage;
+```
+
+--Describe the stage 
+
+```sql
+DESC STAGE EXERCISE_DB.public.aws_stage; 
+```
+--create a table in the same data base to copy everything from aws we need to know the schema
+
+```sql
+CREATE OR REPLACE TABLE EXERCISE_DB.PUBLIC.CUSTOMER (
+    ID VARCHAR,
+    first_name VARCHAR,
+    last_name VARCHAR,
+    email VARCHAR,
+    age INT,
+    city VARCHAR)
+```    
+-- WE Check everything is there
+```sql 
+SELECT * FROM EXERCISE_DB.PUBLIC.CUSTOMER;
+``` 
+-- Copy the data 
+```sql
+COPY INTO EXERCISE_DB.PUBLIC.CUSTOMER
+    FROM @aws_stage
+    file_format= (type = csv field_delimiter=';' skip_header=1)
+```
+-- Check how many rows have been loaded
+```sql
+SELECT COUNT(*) FROM EXERCISE_DB.PUBLIC.CUSTOMER;
+```
+--drop unwanted stages in case errors
+```sql
+DROP STAGE IF EXISTS EXERCISE_DB.PUBLIC.EXERCISE_DB;
+```
 ---
 
 ## Data Transformation Using SQL Functions
 
 ### Create a New Table with a Subset of Columns
+Example 1
 ```sql
 CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
     ORDER_ID VARCHAR(30),
@@ -131,7 +190,14 @@ COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
     FILES = ('OrderDetails.csv');
 ```
 
+```sql
+SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
+```
+
 ### Create a Table with Profitability Flag
+Example 2
+Reset Table
+
 ```sql
 CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
     ORDER_ID VARCHAR(30),
@@ -152,8 +218,24 @@ COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
     FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
     FILES = ('OrderDetails.csv');
 ```
+```sql
+SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
+```
 
 ### Extracting a Substring from a Column
+Example 3
+Reset Table
+```sql
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
+    ORDER_ID VARCHAR(30),
+    AMOUNT INT,
+    PROFIT INT,
+    CATEGORY_SUBSTRING VARCHAR(5)
+  
+    );
+```
+### Copy with Substring from a Column
+
 ```sql
 COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
     FROM (
@@ -163,12 +245,41 @@ COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
     FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
     FILES = ('OrderDetails.csv');
 ```
+```sql
+SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
+```
 
 ---
 
 ## Additional Table Transformations
 
+### Reset Table with Subset of columns Only the ones that we Needed
+Example 4 
+```sql
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
+    ORDER_ID VARCHAR(30),
+    AMOUNT INT,
+    PROFIT INT,
+    PROFITABLE_FLAG VARCHAR(30)
+  
+    );
+```
+### Copy a subset of columns
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX (ORDER_ID,PROFIT)
+    FROM (select 
+            s.$1,
+            s.$3
+          from @MANAGE_DB.external_stages.aws_stage s)
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    files=('OrderDetails.csv'); 
+```
+```sql
+SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
+```
+
 ### Reset Table with Auto-Increment ID
+Example 5
 ```sql
 CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
     ORDER_ID NUMBER AUTOINCREMENT START 1 INCREMENT 1,
