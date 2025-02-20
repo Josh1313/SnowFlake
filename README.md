@@ -1,8 +1,12 @@
-# Snowflake Database Management and Data Loading
+### Snowflake Database Management and Data Loading
 
-## Overview
+### Introduction
+
+This document provides a comprehensive guide on managing external stages, creating tables, and loading data into Snowflake from an AWS S3 bucket. It includes step-by-step SQL commands for seamless execution. Additionally, this guide covers file format objects, which are essential for defining the structure of the data being imported, such as CSV or JSON formats. By leveraging Snowflake's powerful data loading and transformation capabilities, you can efficiently manage large datasets.
+
+### Overview
+
 This document provides an overview of managing external stages, creating tables, and loading data into Snowflake from an AWS S3 bucket. All SQL commands are included for easy execution.
-
 ---
 
 ## Database and Schema Setup
@@ -115,10 +119,11 @@ COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
     FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
     PATTERN = '.*Order.*';
 ```
+---
 
-### Test 2 Do it yourself
+### Test  Do it yourself
 
--- Create stage object, first step here database , public and the name that we asSign the stage
+-- Create stage object, first step here database , public and the name that we assign the stage
 
 ```sql
 CREATE OR REPLACE STAGE EXERCISE_DB.public.aws_stage
@@ -167,6 +172,7 @@ SELECT COUNT(*) FROM EXERCISE_DB.PUBLIC.CUSTOMER;
 ```sql
 DROP STAGE IF EXISTS EXERCISE_DB.PUBLIC.EXERCISE_DB;
 ```
+
 ---
 
 ## Data Transformation Using SQL Functions
@@ -322,6 +328,213 @@ DROP STAGE IF EXISTS EXERCISE_DB.PUBLIC.EXERCISE_DB;
 
 ---
 
-## Conclusion
-This document provides a step-by-step guide for setting up external stages, managing data in Snowflake, and transforming data using SQL functions. Copy and execute the SQL commands as needed. Happy querying!
+## File formats Objects
 
+
+ 
+// Specifying file_format in Copy command
+
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
+    FROM @MANAGE_DB.external_stages.aws_stage_errorex
+    file_format = (type = csv field_delimiter=',' skip_header=1)
+    files = ('OrderDetails_error.csv')
+    ON_ERROR = 'SKIP_FILE_3'; 
+```    
+    
+    
+
+// Creating table
+
+```sql
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
+    ORDER_ID VARCHAR(30),
+    AMOUNT INT,
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(30),
+    SUBCATEGORY VARCHAR(30));  
+```      
+    
+// Creating schema to keep things organized
+
+```sql
+CREATE OR REPLACE SCHEMA MANAGE_DB.file_formats;
+```
+
+// Creating file format object
+
+```sql
+CREATE OR REPLACE file format MANAGE_DB.file_formats.my_file_format;
+```
+
+// See properties of file format object
+
+```sql
+DESC file format MANAGE_DB.file_formats.my_file_format;
+```
+
+// Using file format object in Copy command  
+
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
+    FROM @MANAGE_DB.external_stages.aws_stage_errorex
+    file_format= (FORMAT_NAME=MANAGE_DB.file_formats.my_file_format)
+    files = ('OrderDetails_error.csv')
+    ON_ERROR = 'SKIP_FILE_3'; 
+```    
+
+
+// Altering file format object
+
+```sql
+ALTER file format MANAGE_DB.file_formats.my_file_format
+    SET SKIP_HEADER = 1;
+```
+    
+// Defining properties on creation of file format object  
+
+```sql 
+CREATE OR REPLACE file format MANAGE_DB.file_formats.my_file_format
+    TYPE=JSON,
+    TIME_FORMAT=AUTO;  
+```      
+    
+// See properties of file format object  
+
+```sql
+DESC file format MANAGE_DB.file_formats.my_file_format; 
+```  
+
+  
+// Using file format object in Copy command 
+
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
+    FROM @MANAGE_DB.external_stages.aws_stage_errorex
+    file_format= (FORMAT_NAME=MANAGE_DB.file_formats.my_file_format)
+    files = ('OrderDetails_error.csv')
+    ON_ERROR = 'SKIP_FILE_3'; 
+```    
+
+
+// Altering the type of a file format is not possible
+
+```sql
+ALTER file format MANAGE_DB.file_formats.my_file_format
+SET TYPE = CSV;
+```
+
+
+// Recreate file format (default = CSV)
+
+```sql
+CREATE OR REPLACE file format MANAGE_DB.file_formats.my_file_format;
+```
+
+
+// See properties of file format object 
+
+```sql   
+DESC file format MANAGE_DB.file_formats.my_file_format;  
+``` 
+
+
+
+// Truncate table == Deleting values from the table
+```sql
+TRUNCATE table OUR_FIRST_DB.PUBLIC.ORDERS_EX;
+```
+
+
+// Overwriting properties of file format object 
+
+```sql     
+COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
+    FROM  @MANAGE_DB.external_stages.aws_stage_errorex
+    file_format = (FORMAT_NAME= MANAGE_DB.file_formats.my_file_format  field_delimiter = ',' skip_header=1 )
+    files = ('OrderDetails_error.csv')
+    ON_ERROR = 'SKIP_FILE_3'; 
+```    
+
+```sql
+DESC STAGE MANAGE_DB.external_stages.aws_stage_errorex;
+```
+---
+
+// Test Do it yourself
+
+-- Create stage object first step here database , public and the name that we asign to the stage
+
+```sql
+CREATE OR REPLACE STAGE EXERCISE_DB.public.aws_stage
+    url='s3://snowflake-assignments-mc/fileformat';
+```    
+
+    -- List files in stage
+
+```sql    
+LIST @EXERCISE_DB.public.aws_stage;
+```
+
+```sql
+DESC STAGE EXERCISE_DB.public.aws_stage; 
+```
+
+// Creating schema to keep things organized For my file format
+
+```sql
+CREATE OR REPLACE SCHEMA EXERCISE_DB.file_formats;
+```
+
+// Creating file format object
+
+```sql
+CREATE OR REPLACE FILE FORMAT EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT
+    TYPE = 'CSV'
+    FIELD_DELIMITER = '|'
+    SKIP_HEADER = 1;
+```    
+    
+// See properties of file format object
+
+```sql
+DESC file format EXERCISE_DB.file_formats.my_file_format;
+```
+
+
+
+--Reset -table
+
+```sql
+CREATE OR REPLACE TABLE EXERCISE_DB.PUBLIC.CUSTOMER (
+    ID VARCHAR,
+    first_name VARCHAR,
+    last_name VARCHAR,
+    email VARCHAR,
+    age INT,
+    city VARCHAR)
+```    
+
+    
+    -- We verify the table creation
+
+```sql    
+SELECT * FROM EXERCISE_DB.PUBLIC.CUSTOMER;
+```
+
+
+-- Load the data 
+
+```sql
+COPY INTO EXERCISE_DB.PUBLIC.CUSTOMER
+FROM @EXERCISE_DB.PUBLIC.AWS_STAGE
+FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
+FILES = ('customers4.csv')
+ON_ERROR = 'SKIP_FILE_3%';  
+```
+
+   
+
+## Conclusion
+This document serves as a detailed guide for setting up external stages, managing data in Snowflake, and transforming data using SQL functions. By using file format objects, the process of data loading becomes more efficient and less error-prone. The step-by-step SQL commands provided here facilitate ease of execution. Copy and execute them as needed to streamline your Snowflake data management tasks. Happy querying!
