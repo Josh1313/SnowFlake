@@ -1,540 +1,591 @@
-### Snowflake Database Management and Data Loading
+# Snowflake Continuation
 
-### Introduction
-
-This document provides a comprehensive guide on managing external stages, creating tables, and loading data into Snowflake from an AWS S3 bucket. It includes step-by-step SQL commands for seamless execution. Additionally, this guide covers file format objects, which are essential for defining the structure of the data being imported, such as CSV or JSON formats. By leveraging Snowflake's powerful data loading and transformation capabilities, you can efficiently manage large datasets.
-
-### Overview
-
-This document provides an overview of managing external stages, creating tables, and loading data into Snowflake from an AWS S3 bucket. All SQL commands are included for easy execution.
----
-
-## Database and Schema Setup
-
-```sql
--- Create a database to manage stages, file formats, etc.
-CREATE OR REPLACE DATABASE MANAGE_DB;
-
--- Create a schema for external stages
-CREATE OR REPLACE SCHEMA external_stages;
-```
+## Introduction
+This is the second part of the Snowflake guide, focusing on advanced COPY options for data loading. It provides detailed examples and explanations for various scenarios, including error handling, data validation, size limits, and file truncation. This document aims to enhance your understanding of Snowflake's COPY INTO command by exploring multiple use cases and configurations, making it easier to efficiently load and manage data in Snowflake.
 
 ---
 
-## Creating and Managing External Stages
-
-### Create an External Stage (AWS S3 Connection)
-An external stage is a connection to an AWS S3 bucket where files are stored in the below example with credentials.
-
-```sql
-CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage
-    URL='s3://bucketsnowflakes3'
-    CREDENTIALS=(AWS_KEY_ID='ABCD_DUMMY_ID' AWS_SECRET_KEY='1234abcd_key');
-```
-
-### Describe the External Stage
-
-```sql
-DESC STAGE MANAGE_DB.external_stages.aws_stage;
-```
-
-### Altering External Stage Credentials
-```sql
-ALTER STAGE MANAGE_DB.external_stages.aws_stage
-    SET CREDENTIALS=(AWS_KEY_ID='XYZ_DUMMY_ID' AWS_SECRET_KEY='987xyz');
-```
-
-### Public External Stage (No Credentials Needed)
-```sql
-CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage
-    URL='s3://bucketsnowflakes3';
-```
-
-### List Files in the Stage 
-Meaning in the s3 bucket and also be mindfull to use @ before your stage-name @aws_stage
-
-```sql
-LIST @aws_stage;
-```
+## Overview
+This document provides an overview of managing COPY options in Snowflake, including advanced techniques for validating, handling errors, and controlling data load behaviors. All SQL commands are presented in a ready-to-use format, allowing users to easily copy and paste them into their Snowflake environment for immediate execution.
 
 ---
 
-## Creating Orders Tables
-Remenber at this stage we know the schema 
+## Copy Options
 
+### VALIDATION_MODE
+This section demonstrates how to use the VALIDATION_MODE option to test data loading without actually inserting the data into the target table. It helps ensure that the data meets all requirements before the actual load.
+
+-- Prepare database & table
 ```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS (
+CREATE OR REPLACE DATABASE COPY_DB;
+```
+```sql
+CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
     ORDER_ID VARCHAR(30),
-    AMOUNT INT,
+    AMOUNT VARCHAR(30),
     PROFIT INT,
     QUANTITY INT,
     CATEGORY VARCHAR(30),
-    SUBCATEGORY VARCHAR(30)
-);
-```
-
-### Verify Table Creation
-```sql
-SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS;
-```
-
----
-
-## Copying Data into Snowflake Tables
-
-### Basic Copy Command
-Without declaring the database assuming you do so at the beggining of the workflow
-
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
-    FROM @aws_stage
-    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1);
-```
-
-### Copy Command with Fully Qualified Stage Object
-Declaring the database
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
-    FROM @MANAGE_DB.external_stages.aws_stage
-    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1);
-```
-
-### List Files in S3 Bucket
-```sql
-LIST @MANAGE_DB.external_stages.aws_stage;
-```
-
-### Copy Specific File
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
-    FROM @MANAGE_DB.external_stages.aws_stage
-    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
-    FILES = ('OrderDetails.csv');
-```
-
-### Copy Using a Pattern (Wildcard)
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
-    FROM @MANAGE_DB.external_stages.aws_stage
-    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
-    PATTERN = '.*Order.*';
-```
----
-
-### Test  Do it yourself
-
--- Create stage object, first step here database , public and the name that we assign the stage
-
-```sql
-CREATE OR REPLACE STAGE EXERCISE_DB.public.aws_stage
-    url='s3://snowflake-assignments-mc/loadingdata';
-```
--- List files in stage
-```sql
-LIST @EXERCISE_DB.public.aws_stage;
-```
-
-```sql
-LIST @aws_stage;
-```
-
---Describe the stage 
-
-```sql
-DESC STAGE EXERCISE_DB.public.aws_stage; 
-```
-### Create a table in the same database to copy everything from aws, we need to know the schema
-
-```sql
-CREATE OR REPLACE TABLE EXERCISE_DB.PUBLIC.CUSTOMER (
-    ID VARCHAR,
-    first_name VARCHAR,
-    last_name VARCHAR,
-    email VARCHAR,
-    age INT,
-    city VARCHAR)
-```    
--- Verify Table Creation
-```sql 
-SELECT * FROM EXERCISE_DB.PUBLIC.CUSTOMER;
-``` 
--- Copy the data 
-```sql
-COPY INTO EXERCISE_DB.PUBLIC.CUSTOMER
-    FROM @aws_stage
-    file_format= (type = csv field_delimiter=';' skip_header=1)
-```
--- Check how many rows have been loaded
-```sql
-SELECT COUNT(*) FROM EXERCISE_DB.PUBLIC.CUSTOMER;
-```
---drop unwanted stages in case errors
-```sql
-DROP STAGE IF EXISTS EXERCISE_DB.PUBLIC.EXERCISE_DB;
-```
-
----
-
-## Data Transformation Using SQL Functions
-
-### Create a New Table with a Subset of Columns
-Example 1
-```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
-    ORDER_ID VARCHAR(30),
-    AMOUNT INT
-);
-```
-
-### Copy with a SQL Transformation
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
-    FROM (
-        SELECT s.$1, s.$2 FROM @MANAGE_DB.external_stages.aws_stage s
-    )
-    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
-    FILES = ('OrderDetails.csv');
-```
-
-```sql
-SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
-```
-
-### Create a Table with Profitability Flag
-Example 2
-Reset Table
-
-```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
-    ORDER_ID VARCHAR(30),
-    AMOUNT INT,
-    PROFIT INT,
-    PROFITABLE_FLAG VARCHAR(30)
-);
-```
-
-### Copy with Profitability Calculation
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
-    FROM (
-        SELECT s.$1, s.$2, s.$3,
-        CASE WHEN CAST(s.$3 AS INT) < 0 THEN 'Not Profitable' ELSE 'Profitable' END
-        FROM @MANAGE_DB.external_stages.aws_stage s
-    )
-    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
-    FILES = ('OrderDetails.csv');
-```
-```sql
-SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
-```
-
-### Extracting a Substring from a Column
-Example 3
-Reset Table
-```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
-    ORDER_ID VARCHAR(30),
-    AMOUNT INT,
-    PROFIT INT,
-    CATEGORY_SUBSTRING VARCHAR(5)
-  
-    );
-```
-### Copy with Substring from a Column
-
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
-    FROM (
-        SELECT s.$1, s.$2, s.$3, SUBSTRING(s.$5, 1, 5)
-        FROM @MANAGE_DB.external_stages.aws_stage s
-    )
-    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
-    FILES = ('OrderDetails.csv');
-```
-```sql
-SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
-```
-
----
-
-## Additional Table Transformations
-
-### Reset Table with Subset of columns Only the ones that we Needed
-Example 4 
-```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
-    ORDER_ID VARCHAR(30),
-    AMOUNT INT,
-    PROFIT INT,
-    PROFITABLE_FLAG VARCHAR(30)
-  
-    );
-```
-### Copy a subset of columns
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX (ORDER_ID,PROFIT)
-    FROM (select 
-            s.$1,
-            s.$3
-          from @MANAGE_DB.external_stages.aws_stage s)
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    files=('OrderDetails.csv'); 
-```
-```sql
-SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
-```
-
-### Reset Table with Auto-Increment ID
-Example 5
-```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
-    ORDER_ID NUMBER AUTOINCREMENT START 1 INCREMENT 1,
-    AMOUNT INT,
-    PROFIT INT,
-    PROFITABLE_FLAG VARCHAR(30)
-);
-```
-
-### Copy Data with Auto-Increment ID
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX (PROFIT, AMOUNT)
-    FROM (
-        SELECT s.$2, s.$3
-        FROM @MANAGE_DB.external_stages.aws_stage s
-    )
-    FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
-    FILES = ('OrderDetails.csv');
-```
-
-### Verify Data
-```sql
-SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX;
-SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS_EX WHERE ORDER_ID > 15;
-```
-
-### Drop the Table if Needed
-```sql
-DROP TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX;
-```
-
----
-
-## Cleanup
-If needed, remove an unwanted stage:
-
-```sql
-DROP STAGE IF EXISTS EXERCISE_DB.PUBLIC.EXERCISE_DB;
-```
-
----
-
-## File formats Objects
-
-
- 
-// Specifying file_format in Copy command
-
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
-    FROM @MANAGE_DB.external_stages.aws_stage_errorex
-    file_format = (type = csv field_delimiter=',' skip_header=1)
-    files = ('OrderDetails_error.csv')
-    ON_ERROR = 'SKIP_FILE_3'; 
-```    
-    
-    
-
-// Creating table
-
-```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.ORDERS_EX (
-    ORDER_ID VARCHAR(30),
-    AMOUNT INT,
-    PROFIT INT,
-    QUANTITY INT,
-    CATEGORY VARCHAR(30),
-    SUBCATEGORY VARCHAR(30));  
-```      
-    
-// Creating schema to keep things organized
-
-```sql
-CREATE OR REPLACE SCHEMA MANAGE_DB.file_formats;
-```
-
-// Creating file format object
-
-```sql
-CREATE OR REPLACE file format MANAGE_DB.file_formats.my_file_format;
-```
-
-// See properties of file format object
-
-```sql
-DESC file format MANAGE_DB.file_formats.my_file_format;
-```
-
-// Using file format object in Copy command  
-
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
-    FROM @MANAGE_DB.external_stages.aws_stage_errorex
-    file_format= (FORMAT_NAME=MANAGE_DB.file_formats.my_file_format)
-    files = ('OrderDetails_error.csv')
-    ON_ERROR = 'SKIP_FILE_3'; 
+    SUBCATEGORY VARCHAR(30));
 ```    
 
-
-// Altering file format object
-
+-- Prepare stage object
 ```sql
-ALTER file format MANAGE_DB.file_formats.my_file_format
-    SET SKIP_HEADER = 1;
-```
-    
-// Defining properties on creation of file format object  
-
-```sql 
-CREATE OR REPLACE file format MANAGE_DB.file_formats.my_file_format
-    TYPE=JSON,
-    TIME_FORMAT=AUTO;  
-```      
-    
-// See properties of file format object  
-
-```sql
-DESC file format MANAGE_DB.file_formats.my_file_format; 
+CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
+    URL='s3://snowflakebucket-copyoption/size/';
 ```  
 
-  
-// Using file format object in Copy command 
-
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
-    FROM @MANAGE_DB.external_stages.aws_stage_errorex
-    file_format= (FORMAT_NAME=MANAGE_DB.file_formats.my_file_format)
-    files = ('OrderDetails_error.csv')
-    ON_ERROR = 'SKIP_FILE_3'; 
-```    
-
-
-// Altering the type of a file format is not possible
-
-```sql
-ALTER file format MANAGE_DB.file_formats.my_file_format
-SET TYPE = CSV;
+```sql  
+LIST @COPY_DB.PUBLIC.aws_stage_copy;
 ```
 
-
-// Recreate file format (default = CSV)
+-- Validate data without loading using VALIDATION_MODE = RETURN_ERRORS
 
 ```sql
-CREATE OR REPLACE file format MANAGE_DB.file_formats.my_file_format;
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    FILE_FORMAT= (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
+    PATTERN='.*Order.*'
+    VALIDATION_MODE = RETURN_ERRORS;
 ```
-
-
-// See properties of file format object 
-
-```sql   
-DESC file format MANAGE_DB.file_formats.my_file_format;  
-``` 
-
-
-
-// Truncate table == Deleting values from the table
 ```sql
-TRUNCATE table OUR_FIRST_DB.PUBLIC.ORDERS_EX;
+SELECT * FROM ORDERS;  
 ```
-
-
-// Overwriting properties of file format object 
-
-```sql     
-COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
-    FROM  @MANAGE_DB.external_stages.aws_stage_errorex
-    file_format = (FORMAT_NAME= MANAGE_DB.file_formats.my_file_format  field_delimiter = ',' skip_header=1 )
-    files = ('OrderDetails_error.csv')
-    ON_ERROR = 'SKIP_FILE_3'; 
-```    
-
+--Load data using copy command VALIDATION_MODE  RETURN_5_ROWS 
 ```sql
-DESC STAGE MANAGE_DB.external_stages.aws_stage_errorex;
-```
----
-
-// Test Do it yourself
-
--- Create stage object first step here database , public and the name that we asign to the stage
-
-```sql
-CREATE OR REPLACE STAGE EXERCISE_DB.public.aws_stage
-    url='s3://snowflake-assignments-mc/fileformat';
-```    
-
-    -- List files in stage
-
-```sql    
-LIST @EXERCISE_DB.public.aws_stage;
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+   VALIDATION_MODE = RETURN_5_ROWS ; 
 ```
 
 ```sql
-DESC STAGE EXERCISE_DB.public.aws_stage; 
+SELECT * FROM ORDERS;  
 ```
 
-// Creating schema to keep things organized For my file format
+### Use files with errors 
+This option allows you to return only the failed rows, which is useful for debugging data issues. Combining this with the ON_ERROR option helps you focus on problematic data.
+
+--Create a stage
+```sql
+create or replace stage copy_db.public.aws_stage_copy
+    url ='s3://snowflakebucket-copyoption/returnfailed/'; 
+```
+-- LISTING FILES
+```sql
+list @copy_db.public.aws_stage_copy; 
+```
+
+-- show all errors --
+```sql
+copy into copy_db.public.orders
+    from @copy_db.public.aws_stage_copy
+    file_format = (type=csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    validation_mode=return_errors;
+```
+
+-- validate first n rows --
+```sql
+copy into copy_db.public.orders
+    from @copy_db.public.aws_stage_copy
+    file_format = (type=csv field_delimiter=',' skip_header=1)
+    pattern='.*error.*'
+    validation_mode=return_1_rows;
+```
+-- Test do it yourself
+```sql
+CREATE OR REPLACE TABLE  EXERCISE_DB.PUBLIC.EMPLOYEES (
+    customer_id INT,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    email VARCHAR(50),
+    age INT,
+    deparment VARCHAR(50));
+```
+--- Prepare stage object
 
 ```sql
-CREATE OR REPLACE SCHEMA EXERCISE_DB.file_formats;
+CREATE OR REPLACE STAGE EXERCISE_DB.PUBLIC.aws_stage_copy
+    url='s3://snowflake-assignments-mc/copyoptions/example1';
 ```
 
-// Creating file format object
+```sql
+ list @EXERCISE_DB.public.aws_stage_copy;   
+```
+
+---Creating file format object
 
 ```sql
 CREATE OR REPLACE FILE FORMAT EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT
     TYPE = 'CSV'
-    FIELD_DELIMITER = '|'
-    SKIP_HEADER = 1;
-```    
-    
-// See properties of file format object
+    FIELD_DELIMITER = ','
+    SKIP_HEADER = 1;   
+```     
 
+--Validation data using copy command  VALIDATION_MODE  RETURN_ERRORS will be none so is ready to load
 ```sql
-DESC file format EXERCISE_DB.file_formats.my_file_format;
-```
-
-
-
---Reset -table
-
-```sql
-CREATE OR REPLACE TABLE EXERCISE_DB.PUBLIC.CUSTOMER (
-    ID VARCHAR,
-    first_name VARCHAR,
-    last_name VARCHAR,
-    email VARCHAR,
-    age INT,
-    city VARCHAR)
+COPY INTO EXERCISE_DB.PUBLIC.EMPLOYEES
+    FROM  @EXERCISE_DB.PUBLIC.aws_stage_copy
+    FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
+    pattern='.*employees.*'
+    VALIDATION_MODE = RETURN_ERRORS;
 ```    
 
+--copy data regardells of the errors command  ON_ERROR  CONTINUE
+```sql
+COPY INTO EXERCISE_DB.PUBLIC.EMPLOYEES
+    FROM  @EXERCISE_DB.PUBLIC.aws_stage_copy
+    FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
+    pattern='.*employees.*'
+    ON_ERROR = 'CONTINUE';
+```    
     
-    -- We verify the table creation
-
+    
 ```sql    
-SELECT * FROM EXERCISE_DB.PUBLIC.CUSTOMER;
+SELECT* FROM EXERCISE_DB.PUBLIC.EMPLOYEES 
 ```
 
-
--- Load the data 
-
-```sql
-COPY INTO EXERCISE_DB.PUBLIC.CUSTOMER
-FROM @EXERCISE_DB.PUBLIC.AWS_STAGE
-FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
-FILES = ('customers4.csv')
-ON_ERROR = 'SKIP_FILE_3%';  
-```
-
+-- more validation methos more advance
    
+---- Use files with errors ----
+```sql 
+CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
+    url='s3://snowflakebucket-copyoption/returnfailed/';
+```
+
+```sql 
+LIST @COPY_DB.PUBLIC.aws_stage_copy;  
+```  
+
+
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    VALIDATION_MODE = RETURN_ERRORS;
+```    
+
+
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    VALIDATION_MODE = RETURN_1_rows;
+```    
+    
+
+
+
+-------------- Working with error results -----------
+
+---- 1) Saving rejected files after VALIDATION_MODE ---- 
+
+```sql 
+CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
+    ORDER_ID VARCHAR(30),
+    AMOUNT VARCHAR(30),
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(30),
+    SUBCATEGORY VARCHAR(30));
+```    
+
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    VALIDATION_MODE = RETURN_ERRORS;
+```
+// WE COPY THE QUERY IF FROM THE GUI    
+
+  --  '01ba8495-030c-6f01-000b-a75f0001c006'
+
+-- Storing rejected /failed results in a table
+
+```sql 
+CREATE OR REPLACE TABLE rejected AS 
+select rejected_record from table(result_scan(last_query_id()));
+```
+-- or we can use the query id number
+
+```sql 
+select rejected_record from table(result_scan('01ba8495-030c-6f01-000b-a75f0001c006'));
+```
+
+
+
+
+-- Adding additional records --
+
+```sql 
+INSERT INTO rejected
+select rejected_record from table(result_scan(last_query_id()));
+```
+```sql 
+SELECT * FROM rejected;
+```
+
+---- 2) Saving rejected files without VALIDATION_MODE ---- 
+
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    ON_ERROR=CONTINUE;
+```    
+  
+```sql   
+select * from table(validate(orders, job_id => '_last'));
+```
+
+
+---- 3) Working with rejected records ---- 
+
+
+```sql 
+SELECT REJECTED_RECORD FROM rejected;
+```
+
+```sql 
+CREATE OR REPLACE TABLE rejected_values as
+SELECT 
+SPLIT_PART(rejected_record,',',1) as ORDER_ID, 
+SPLIT_PART(rejected_record,',',2) as AMOUNT, 
+SPLIT_PART(rejected_record,',',3) as PROFIT, 
+SPLIT_PART(rejected_record,',',4) as QUATNTITY, 
+SPLIT_PART(rejected_record,',',5) as CATEGORY, 
+SPLIT_PART(rejected_record,',',6) as SUBCATEGORY
+FROM rejected; 
+```
+
+```sql 
+SELECT * FROM rejected_values;
+```
+
+-- Size limit in bites the first  file always will uploads regardless of the number of files
+
+
+
+---- SIZE_LIMIT ----
+
+-- Prepare database & table
+
+```sql 
+CREATE OR REPLACE DATABASE COPY_DB;
+```
+
+```sql 
+CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
+    ORDER_ID VARCHAR(30),
+    AMOUNT VARCHAR(30),
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(30),
+    SUBCATEGORY VARCHAR(30));
+```    
+    
+-- Prepare stage object
+```sql 
+CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
+    url='s3://snowflakebucket-copyoption/size/';
+```    
+      
+-- List files in stage
+```sql 
+LIST @aws_stage_copy;
+```
+
+
+-- Load data using copy command if the size exceedes the first file will upload only the first one and viceversa
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    SIZE_LIMIT=60000;// change 20000 size
+```    
+
+---- RETURN_FAILED_ONLY ----
+```sql 
+CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
+    ORDER_ID VARCHAR(30),
+    AMOUNT VARCHAR(30),
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(30),
+    SUBCATEGORY VARCHAR(30));
+```    
+
+-- Prepare stage object
+```sql 
+CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
+    url='s3://snowflakebucket-copyoption/returnfailed/';
+```    
+
+```sql   
+LIST @COPY_DB.PUBLIC.aws_stage_copy;
+```
+  
+    
+--- Load data using copy command this is just a test when is not make any sense to use by itself
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    RETURN_FAILED_ONLY = TRUE;
+```sql     
+    
+    
+-- now here is good practice where we use the combination with continue    and we can focuse on the files that have errors
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    ON_ERROR =CONTINUE
+    RETURN_FAILED_ONLY = TRUE;
+```sql     
+
+-- Default = FALSE
+
+```sql 
+CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
+    ORDER_ID VARCHAR(30),
+    AMOUNT VARCHAR(30),
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(30),
+    SUBCATEGORY VARCHAR(30));
+```
+
+
+--  This will gives us all files because we need to specified returnfailed to true because by default comes false
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    ON_ERROR =CONTINUE;
+```    
+
+-- Truncate columns
+
+    ---- TRUNCATECOLUMNS ----
+    // default = False
+    // TRUE = string are automatically truncated to the target column lenght 
+    // False = COPY produces an error if aloaded string exceeds the target column lenght
+
+
+```sql 
+CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
+    ORDER_ID VARCHAR(30),
+    AMOUNT VARCHAR(30),
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(10),//cchanges the caracthers
+    SUBCATEGORY VARCHAR(30));
+```    
+
+
+-- Prepare stage object
+```sql 
+CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
+    url='s3://snowflakebucket-copyoption/size/';
+```    
+```sql   
+LIST @COPY_DB.PUBLIC.aws_stage_copy;
+```
+  
+    
+-- Load data using copy command this will give you an error
+
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*';
+```    
+
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    TRUNCATECOLUMNS = true; 
+```    
+    
+```sql     
+SELECT * FROM ORDERS;  
+```
+
+### FORCE
+By default, Snowflake prevents duplicate data loads. The FORCE option allows you to override this behavior, which is useful for testing or reloading unchanged files.
+
+// Force
+
+
+---- FORCE ----
+// Note that this option reload files , potentially duplicating data in a table 
+// that is way by default comes false but we change that in case need it
+
+```sql 
+CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
+    ORDER_ID VARCHAR(30),
+    AMOUNT VARCHAR(30),
+    PROFIT INT,
+    QUANTITY INT,
+    CATEGORY VARCHAR(30),
+    SUBCATEGORY VARCHAR(30));
+```    
+
+```sql 
+// Prepare stage object
+CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
+    url='s3://snowflakebucket-copyoption/size/';
+```    
+```sql   
+LIST @COPY_DB.PUBLIC.aws_stage_copy;
+```
+  
+    
+-- Load data using copy command
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*';
+```    
+
+-- Not possible to load file that have been loaded and data has not been modified
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*';
+```    
+   
+```sql 
+SELECT * FROM ORDERS; 
+```   
+
+
+-- Using the FORCE option
+
+```sql 
+COPY INTO COPY_DB.PUBLIC.ORDERS
+    FROM @aws_stage_copy
+    file_format= (type = csv field_delimiter=',' skip_header=1)
+    pattern='.*Order.*'
+    FORCE = TRUE;
+```    
+-- load history
+
+    
+-- Query load history within a database --
+```sql
+USE COPY_DB;
+```
+```sql 
+SELECT * FROM information_schema.load_history;
+```
+
+
+
+
+
+-- Query load history gloabally from SNOWFLAKE database --
+
+```sql 
+SELECT * FROM snowflake.account_usage.load_history;
+```
+
+
+-- Filter on specific table & schema
+```sql 
+SELECT * FROM snowflake.account_usage.load_history
+  where schema_name='PUBLIC' and
+  table_name='ORDERS';
+```
+  
+  
+-- Filter on specific table & schema
+
+```sql 
+SELECT * FROM snowflake.account_usage.load_history
+  where schema_name='PUBLIC' and
+  table_name='ORDERS' and
+  error_count > 0;
+ ``` 
+  
+  
+-- Filter on specific table & schema
+```sql 
+SELECT * FROM snowflake.account_usage.load_history
+WHERE DATE(LAST_LOAD_TIME) <= DATEADD(days,-1,CURRENT_DATE);
+```
+
+
+## Test do it yourself
+
+```sql 
+CREATE OR REPLACE TABLE  EXERCISE_DB.PUBLIC.EMPLOYEES (
+    customer_id INT,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    email VARCHAR(50),
+    age INT,
+    deparment VARCHAR(50));
+```    
+
+-- Prepare stage object
+
+```sql 
+CREATE OR REPLACE STAGE EXERCISE_DB.PUBLIC.aws_stage_copy
+    url='s3://snowflake-assignments-mc/copyoptions/example2';
+```    
+```sql 
+ list @EXERCISE_DB.public.aws_stage_copy;  
+```  
+
+-- Creating file format object
+```sql 
+CREATE OR REPLACE FILE FORMAT EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT
+    TYPE = 'CSV'
+    FIELD_DELIMITER = ','
+    SKIP_HEADER = 1;    
+```
+
+-- Validation data using copy command  VALIDATION_MODE  RETURN_ERRORS will be none so is ready to load
+```sql 
+COPY INTO EXERCISE_DB.PUBLIC.EMPLOYEES
+    FROM  @EXERCISE_DB.PUBLIC.aws_stage_copy
+    FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
+    pattern='.*employees.*'
+    VALIDATION_MODE = RETURN_ERRORS;
+```    
+
+-- Copy data regardells of the errors command  TRUNCATE COLUMNS TRUE
+```sql 
+COPY INTO EXERCISE_DB.PUBLIC.EMPLOYEES
+    FROM  @EXERCISE_DB.PUBLIC.aws_stage_copy
+    FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
+    pattern='.*employees.*'
+    TRUNCATECOLUMNS = true
+    ON_ERROR = 'CONTINUE';
+```    
+    
+```sql    
+SELECT* FROM EXERCISE_DB.PUBLIC.EMPLOYEES 
+```
+
 
 ## Conclusion
-This document serves as a detailed guide for setting up external stages, managing data in Snowflake, and transforming data using SQL functions. By using file format objects, the process of data loading becomes more efficient and less error-prone. The step-by-step SQL commands provided here facilitate ease of execution. Copy and execute them as needed to streamline your Snowflake data management tasks. Happy querying!
+This document explores advanced COPY options in Snowflake, enabling more control and flexibility in data loading. By understanding and using these options effectively, users can optimize data workflows, handle errors gracefully, and maintain data integrity. Copy and execute the SQL commands as needed to enhance your Snowflake data management strategy. Happy querying!
+
