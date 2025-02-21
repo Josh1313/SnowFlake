@@ -196,10 +196,10 @@ Snowflake Automatically maintains these for usage
 ![alt text](image-2.png)
 ![alt text](image-3.png)
 Keep in mind that clustering is not for all tables
-The one that benefit the most are the ine that have multiple terabites
+The one that benefit the most are the ones that have multiple terabites
 
 ## How to cluster
-Columns that are used most frequently in WHERE-CLAUSES (oftendate columns for event tables)
+Columns that are used most frequently in WHERE-CLAUSES (often date columns for event tables)
 If yoy typically use filters on two columns the table can also benefit from two cluster keys
 
 # Hands on
