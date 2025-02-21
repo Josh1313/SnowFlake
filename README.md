@@ -1,591 +1,270 @@
-# Snowflake Continuation
-
-## Introduction
-This is the second part of the Snowflake guide, focusing on advanced COPY options for data loading. It provides detailed examples and explanations for various scenarios, including error handling, data validation, size limits, and file truncation. This document aims to enhance your understanding of Snowflake's COPY INTO command by exploring multiple use cases and configurations, making it easier to efficiently load and manage data in Snowflake.
-
----
+```markdown
+# Data Engineering and Software Engineering Documentation
 
 ## Overview
-This document provides an overview of managing COPY options in Snowflake, including advanced techniques for validating, handling errors, and controlling data load behaviors. All SQL commands are presented in a ready-to-use format, allowing users to easily copy and paste them into their Snowflake environment for immediate execution.
+
+This document provides a comprehensive guide for handling raw and structured data in Snowflake using various stages and file formats. It outlines a step-by-step process for loading, parsing, transforming, and querying raw data, both from JSON and Parquet formats. It includes SQL queries for each stage of the data pipeline, which can be copied and executed directly by the final user.
 
 ---
 
-## Copy Options
+## Table of Contents
+1. [Loading Raw JSON Data](#loading-raw-json-data)
+2. [Parsing and Analyzing Raw JSON Data](#parsing-and-analyzing-raw-json-data)
+3. [Handling Nested Data](#handling-nested-data)
+4. [Working with Arrays](#working-with-arrays)
+5. [Dealing with Hierarchy and Aggregation](#dealing-with-hierarchy-and-aggregation)
+6. [Querying Parquet Data](#querying-parquet-data)
+7. [Data Transformation and Metadata](#data-transformation-and-metadata)
+8. [Final Data Insert and Table Creation](#final-data-insert-and-table-creation)
+9. [Conclusion](#conclusion)
 
-### VALIDATION_MODE
-This section demonstrates how to use the VALIDATION_MODE option to test data loading without actually inserting the data into the target table. It helps ensure that the data meets all requirements before the actual load.
+---
 
--- Prepare database & table
-```sql
-CREATE OR REPLACE DATABASE COPY_DB;
-```
-```sql
-CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
-    ORDER_ID VARCHAR(30),
-    AMOUNT VARCHAR(30),
-    PROFIT INT,
-    QUANTITY INT,
-    CATEGORY VARCHAR(30),
-    SUBCATEGORY VARCHAR(30));
-```    
+## 1. Loading Raw JSON Data
 
--- Prepare stage object
-```sql
-CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
-    URL='s3://snowflakebucket-copyoption/size/';
-```  
-
-```sql  
-LIST @COPY_DB.PUBLIC.aws_stage_copy;
-```
-
--- Validate data without loading using VALIDATION_MODE = RETURN_ERRORS
+### Step 1: Load Raw JSON from an External Stage
 
 ```sql
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    FILE_FORMAT= (TYPE = CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
-    PATTERN='.*Order.*'
-    VALIDATION_MODE = RETURN_ERRORS;
+CREATE OR REPLACE stage MANAGE_DB.EXTERNAL_STAGES.JSONSTAGE
+     url='s3://bucketsnowflake-jsondemo';
 ```
-```sql
-SELECT * FROM ORDERS;  
-```
---Load data using copy command VALIDATION_MODE  RETURN_5_ROWS 
-```sql
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-   VALIDATION_MODE = RETURN_5_ROWS ; 
-```
+
+### Step 2: Define a File Format for JSON
 
 ```sql
-SELECT * FROM ORDERS;  
+CREATE OR REPLACE file format MANAGE_DB.FILE_FORMATS.JSONFORMAT
+    TYPE = JSON;
 ```
 
-### Use files with errors 
-This option allows you to return only the failed rows, which is useful for debugging data issues. Combining this with the ON_ERROR option helps you focus on problematic data.
-
---Create a stage
-```sql
-create or replace stage copy_db.public.aws_stage_copy
-    url ='s3://snowflakebucket-copyoption/returnfailed/'; 
-```
--- LISTING FILES
-```sql
-list @copy_db.public.aws_stage_copy; 
-```
-
--- show all errors --
-```sql
-copy into copy_db.public.orders
-    from @copy_db.public.aws_stage_copy
-    file_format = (type=csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    validation_mode=return_errors;
-```
-
--- validate first n rows --
-```sql
-copy into copy_db.public.orders
-    from @copy_db.public.aws_stage_copy
-    file_format = (type=csv field_delimiter=',' skip_header=1)
-    pattern='.*error.*'
-    validation_mode=return_1_rows;
-```
--- Test do it yourself
-```sql
-CREATE OR REPLACE TABLE  EXERCISE_DB.PUBLIC.EMPLOYEES (
-    customer_id INT,
-    first_name VARCHAR(50),
-    last_name VARCHAR(50),
-    email VARCHAR(50),
-    age INT,
-    deparment VARCHAR(50));
-```
---- Prepare stage object
+### Step 3: Create a Table to Store the Raw Data
 
 ```sql
-CREATE OR REPLACE STAGE EXERCISE_DB.PUBLIC.aws_stage_copy
-    url='s3://snowflake-assignments-mc/copyoptions/example1';
+CREATE OR REPLACE table OUR_FIRST_DB.PUBLIC.JSON_RAW (
+    raw_file variant);
 ```
+
+### Step 4: Load Data into the Table
 
 ```sql
- list @EXERCISE_DB.public.aws_stage_copy;   
+COPY INTO OUR_FIRST_DB.PUBLIC.JSON_RAW
+    FROM @MANAGE_DB.EXTERNAL_STAGES.JSONSTAGE
+    file_format= MANAGE_DB.FILE_FORMATS.JSONFORMAT
+    files = ('HR_data.json');
 ```
 
----Creating file format object
+### Step 5: View Loaded Data
 
 ```sql
-CREATE OR REPLACE FILE FORMAT EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT
-    TYPE = 'CSV'
-    FIELD_DELIMITER = ','
-    SKIP_HEADER = 1;   
-```     
+SELECT * FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
+```
 
---Validation data using copy command  VALIDATION_MODE  RETURN_ERRORS will be none so is ready to load
+---
+
+## 2. Parsing and Analyzing Raw JSON Data
+
+### Step 1: Select Specific Attributes/Columns from Raw JSON
+
 ```sql
-COPY INTO EXERCISE_DB.PUBLIC.EMPLOYEES
-    FROM  @EXERCISE_DB.PUBLIC.aws_stage_copy
-    FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
-    pattern='.*employees.*'
-    VALIDATION_MODE = RETURN_ERRORS;
-```    
+SELECT RAW_FILE:city FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
+```
 
---copy data regardells of the errors command  ON_ERROR  CONTINUE
+### Step 2: Select Attribute by Column Number
+
 ```sql
-COPY INTO EXERCISE_DB.PUBLIC.EMPLOYEES
-    FROM  @EXERCISE_DB.PUBLIC.aws_stage_copy
-    FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
-    pattern='.*employees.*'
-    ON_ERROR = 'CONTINUE';
-```    
-    
-    
-```sql    
-SELECT* FROM EXERCISE_DB.PUBLIC.EMPLOYEES 
+SELECT $1:first_name FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
 ```
 
--- more validation methos more advance
-   
----- Use files with errors ----
-```sql 
-CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
-    url='s3://snowflakebucket-copyoption/returnfailed/';
+### Step 3: Format Columns to Appropriate Data Types
+
+```sql
+SELECT RAW_FILE:first_name::string as first_name  FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
+SELECT RAW_FILE:id::int as id  FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
 ```
 
-```sql 
-LIST @COPY_DB.PUBLIC.aws_stage_copy;  
-```  
+### Step 4: Select Multiple Attributes
 
-
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    VALIDATION_MODE = RETURN_ERRORS;
-```    
-
-
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    VALIDATION_MODE = RETURN_1_rows;
-```    
-    
-
-
-
--------------- Working with error results -----------
-
----- 1) Saving rejected files after VALIDATION_MODE ---- 
-
-```sql 
-CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
-    ORDER_ID VARCHAR(30),
-    AMOUNT VARCHAR(30),
-    PROFIT INT,
-    QUANTITY INT,
-    CATEGORY VARCHAR(30),
-    SUBCATEGORY VARCHAR(30));
-```    
-
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    VALIDATION_MODE = RETURN_ERRORS;
-```
-// WE COPY THE QUERY IF FROM THE GUI    
-
-  --  '01ba8495-030c-6f01-000b-a75f0001c006'
-
--- Storing rejected /failed results in a table
-
-```sql 
-CREATE OR REPLACE TABLE rejected AS 
-select rejected_record from table(result_scan(last_query_id()));
-```
--- or we can use the query id number
-
-```sql 
-select rejected_record from table(result_scan('01ba8495-030c-6f01-000b-a75f0001c006'));
-```
-
-
-
-
--- Adding additional records --
-
-```sql 
-INSERT INTO rejected
-select rejected_record from table(result_scan(last_query_id()));
-```
-```sql 
-SELECT * FROM rejected;
-```
-
----- 2) Saving rejected files without VALIDATION_MODE ---- 
-
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    ON_ERROR=CONTINUE;
-```    
-  
-```sql   
-select * from table(validate(orders, job_id => '_last'));
-```
-
-
----- 3) Working with rejected records ---- 
-
-
-```sql 
-SELECT REJECTED_RECORD FROM rejected;
-```
-
-```sql 
-CREATE OR REPLACE TABLE rejected_values as
+```sql
 SELECT 
-SPLIT_PART(rejected_record,',',1) as ORDER_ID, 
-SPLIT_PART(rejected_record,',',2) as AMOUNT, 
-SPLIT_PART(rejected_record,',',3) as PROFIT, 
-SPLIT_PART(rejected_record,',',4) as QUATNTITY, 
-SPLIT_PART(rejected_record,',',5) as CATEGORY, 
-SPLIT_PART(rejected_record,',',6) as SUBCATEGORY
-FROM rejected; 
+    RAW_FILE:id::int as id,  
+    RAW_FILE:first_name::STRING as first_name,
+    RAW_FILE:last_name::STRING as last_name,
+    RAW_FILE:gender::STRING as gender
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
 ```
 
-```sql 
-SELECT * FROM rejected_values;
-```
+---
 
--- Size limit in bites the first  file always will uploads regardless of the number of files
+## 3. Handling Nested Data
 
+### Step 1: Access Nested Attributes
 
-
----- SIZE_LIMIT ----
-
--- Prepare database & table
-
-```sql 
-CREATE OR REPLACE DATABASE COPY_DB;
-```
-
-```sql 
-CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
-    ORDER_ID VARCHAR(30),
-    AMOUNT VARCHAR(30),
-    PROFIT INT,
-    QUANTITY INT,
-    CATEGORY VARCHAR(30),
-    SUBCATEGORY VARCHAR(30));
-```    
-    
--- Prepare stage object
-```sql 
-CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
-    url='s3://snowflakebucket-copyoption/size/';
-```    
-      
--- List files in stage
-```sql 
-LIST @aws_stage_copy;
-```
-
-
--- Load data using copy command if the size exceedes the first file will upload only the first one and viceversa
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    SIZE_LIMIT=60000;// change 20000 size
-```    
-
----- RETURN_FAILED_ONLY ----
-```sql 
-CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
-    ORDER_ID VARCHAR(30),
-    AMOUNT VARCHAR(30),
-    PROFIT INT,
-    QUANTITY INT,
-    CATEGORY VARCHAR(30),
-    SUBCATEGORY VARCHAR(30));
-```    
-
--- Prepare stage object
-```sql 
-CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
-    url='s3://snowflakebucket-copyoption/returnfailed/';
-```    
-
-```sql   
-LIST @COPY_DB.PUBLIC.aws_stage_copy;
-```
-  
-    
---- Load data using copy command this is just a test when is not make any sense to use by itself
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    RETURN_FAILED_ONLY = TRUE;
-```sql     
-    
-    
--- now here is good practice where we use the combination with continue    and we can focuse on the files that have errors
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    ON_ERROR =CONTINUE
-    RETURN_FAILED_ONLY = TRUE;
-```sql     
-
--- Default = FALSE
-
-```sql 
-CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
-    ORDER_ID VARCHAR(30),
-    AMOUNT VARCHAR(30),
-    PROFIT INT,
-    QUANTITY INT,
-    CATEGORY VARCHAR(30),
-    SUBCATEGORY VARCHAR(30));
-```
-
-
---  This will gives us all files because we need to specified returnfailed to true because by default comes false
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    ON_ERROR =CONTINUE;
-```    
-
--- Truncate columns
-
-    ---- TRUNCATECOLUMNS ----
-    // default = False
-    // TRUE = string are automatically truncated to the target column lenght 
-    // False = COPY produces an error if aloaded string exceeds the target column lenght
-
-
-```sql 
-CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
-    ORDER_ID VARCHAR(30),
-    AMOUNT VARCHAR(30),
-    PROFIT INT,
-    QUANTITY INT,
-    CATEGORY VARCHAR(10),//cchanges the caracthers
-    SUBCATEGORY VARCHAR(30));
-```    
-
-
--- Prepare stage object
-```sql 
-CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
-    url='s3://snowflakebucket-copyoption/size/';
-```    
-```sql   
-LIST @COPY_DB.PUBLIC.aws_stage_copy;
-```
-  
-    
--- Load data using copy command this will give you an error
-
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*';
-```    
-
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    TRUNCATECOLUMNS = true; 
-```    
-    
-```sql     
-SELECT * FROM ORDERS;  
-```
-
-### FORCE
-By default, Snowflake prevents duplicate data loads. The FORCE option allows you to override this behavior, which is useful for testing or reloading unchanged files.
-
-// Force
-
-
----- FORCE ----
-// Note that this option reload files , potentially duplicating data in a table 
-// that is way by default comes false but we change that in case need it
-
-```sql 
-CREATE OR REPLACE TABLE  COPY_DB.PUBLIC.ORDERS (
-    ORDER_ID VARCHAR(30),
-    AMOUNT VARCHAR(30),
-    PROFIT INT,
-    QUANTITY INT,
-    CATEGORY VARCHAR(30),
-    SUBCATEGORY VARCHAR(30));
-```    
-
-```sql 
-// Prepare stage object
-CREATE OR REPLACE STAGE COPY_DB.PUBLIC.aws_stage_copy
-    url='s3://snowflakebucket-copyoption/size/';
-```    
-```sql   
-LIST @COPY_DB.PUBLIC.aws_stage_copy;
-```
-  
-    
--- Load data using copy command
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*';
-```    
-
--- Not possible to load file that have been loaded and data has not been modified
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*';
-```    
-   
-```sql 
-SELECT * FROM ORDERS; 
-```   
-
-
--- Using the FORCE option
-
-```sql 
-COPY INTO COPY_DB.PUBLIC.ORDERS
-    FROM @aws_stage_copy
-    file_format= (type = csv field_delimiter=',' skip_header=1)
-    pattern='.*Order.*'
-    FORCE = TRUE;
-```    
--- load history
-
-    
--- Query load history within a database --
 ```sql
-USE COPY_DB;
-```
-```sql 
-SELECT * FROM information_schema.load_history;
+SELECT RAW_FILE:job.salary::INT as salary
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
 ```
 
+### Step 2: Select Multiple Nested Attributes
 
-
-
-
--- Query load history gloabally from SNOWFLAKE database --
-
-```sql 
-SELECT * FROM snowflake.account_usage.load_history;
+```sql
+SELECT 
+    RAW_FILE:first_name::STRING as first_name,
+    RAW_FILE:job.salary::INT as salary,
+    RAW_FILE:job.title::STRING as title
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
 ```
 
+---
 
--- Filter on specific table & schema
-```sql 
-SELECT * FROM snowflake.account_usage.load_history
-  where schema_name='PUBLIC' and
-  table_name='ORDERS';
-```
-  
-  
--- Filter on specific table & schema
+## 4. Working with Arrays
 
-```sql 
-SELECT * FROM snowflake.account_usage.load_history
-  where schema_name='PUBLIC' and
-  table_name='ORDERS' and
-  error_count > 0;
- ``` 
-  
-  
--- Filter on specific table & schema
-```sql 
-SELECT * FROM snowflake.account_usage.load_history
-WHERE DATE(LAST_LOAD_TIME) <= DATEADD(days,-1,CURRENT_DATE);
+### Step 1: Access Array Data
+
+```sql
+SELECT
+    RAW_FILE:prev_company[1]::STRING as prev_company
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
 ```
 
+### Step 2: Select Array Size
 
-## Test do it yourself
-
-```sql 
-CREATE OR REPLACE TABLE  EXERCISE_DB.PUBLIC.EMPLOYEES (
-    customer_id INT,
-    first_name VARCHAR(50),
-    last_name VARCHAR(50),
-    email VARCHAR(50),
-    age INT,
-    deparment VARCHAR(50));
-```    
-
--- Prepare stage object
-
-```sql 
-CREATE OR REPLACE STAGE EXERCISE_DB.PUBLIC.aws_stage_copy
-    url='s3://snowflake-assignments-mc/copyoptions/example2';
-```    
-```sql 
- list @EXERCISE_DB.public.aws_stage_copy;  
-```  
-
--- Creating file format object
-```sql 
-CREATE OR REPLACE FILE FORMAT EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT
-    TYPE = 'CSV'
-    FIELD_DELIMITER = ','
-    SKIP_HEADER = 1;    
+```sql
+SELECT
+    ARRAY_SIZE(RAW_FILE:prev_company) as prev_company
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
 ```
 
--- Validation data using copy command  VALIDATION_MODE  RETURN_ERRORS will be none so is ready to load
-```sql 
-COPY INTO EXERCISE_DB.PUBLIC.EMPLOYEES
-    FROM  @EXERCISE_DB.PUBLIC.aws_stage_copy
-    FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
-    pattern='.*employees.*'
-    VALIDATION_MODE = RETURN_ERRORS;
-```    
+### Step 3: Combine Array Data with Other Columns
 
--- Copy data regardells of the errors command  TRUNCATE COLUMNS TRUE
-```sql 
-COPY INTO EXERCISE_DB.PUBLIC.EMPLOYEES
-    FROM  @EXERCISE_DB.PUBLIC.aws_stage_copy
-    FILE_FORMAT = (FORMAT_NAME = EXERCISE_DB.FILE_FORMATS.MY_FILE_FORMAT)
-    pattern='.*employees.*'
-    TRUNCATECOLUMNS = true
-    ON_ERROR = 'CONTINUE';
-```    
-    
-```sql    
-SELECT* FROM EXERCISE_DB.PUBLIC.EMPLOYEES 
+```sql
+SELECT 
+    RAW_FILE:id::int as id,  
+    RAW_FILE:first_name::STRING as first_name,
+    RAW_FILE:prev_company[0]::STRING as prev_company
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW
+UNION ALL 
+SELECT 
+    RAW_FILE:id::int as id,  
+    RAW_FILE:first_name::STRING as first_name,
+    RAW_FILE:prev_company[1]::STRING as prev_company
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW
+ORDER BY id;
 ```
 
+---
+
+## 5. Dealing with Hierarchy and Aggregation
+
+### Step 1: Query Nested Arrays and Aggregate Data
+
+```sql
+SELECT 
+     array_size(RAW_FILE:spoken_languages) as spoken_languages
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
+```
+
+### Step 2: Use Array Index for Detailed Data
+
+```sql
+SELECT 
+    RAW_FILE:first_name::STRING as first_name,
+    RAW_FILE:spoken_languages[0].language::STRING as First_language,
+    RAW_FILE:spoken_languages[0].level::STRING as Level_spoken
+FROM OUR_FIRST_DB.PUBLIC.JSON_RAW;
+```
+
+---
+
+## 6. Querying Parquet Data
+
+### Step 1: Create a File Format and Stage for Parquet Data
+
+```sql
+CREATE OR REPLACE FILE FORMAT MANAGE_DB.FILE_FORMATS.PARQUET_FORMAT
+    TYPE = 'parquet';
+
+CREATE OR REPLACE STAGE MANAGE_DB.EXTERNAL_STAGES.PARQUETSTAGE
+    url = 's3://snowflakeparquetdemo'   
+    FILE_FORMAT = MANAGE_DB.FILE_FORMATS.PARQUET_FORMAT;
+```
+
+### Step 2: Preview Parquet Data
+
+```sql
+LIST  @MANAGE_DB.EXTERNAL_STAGES.PARQUETSTAGE;
+
+SELECT * FROM @MANAGE_DB.EXTERNAL_STAGES.PARQUETSTAGE;
+```
+
+---
+
+## 7. Data Transformation and Metadata
+
+### Step 1: Add Metadata for Row Number, Filename, and Load Date
+
+```sql
+SELECT 
+$1:__index_level_0__::int as index_level,
+$1:cat_id::VARCHAR(50) as category,
+DATE($1:date::int ) as Date,
+$1:"dept_id"::VARCHAR(50) as Dept_ID,
+$1:"id"::VARCHAR(50) as ID,
+$1:"item_id"::VARCHAR(50) as Item_ID,
+$1:"state_id"::VARCHAR(50) as State_ID,
+$1:"store_id"::VARCHAR(50) as Store_ID,
+$1:"value"::int as value,
+METADATA$FILENAME as FILENAME,
+METADATA$FILE_ROW_NUMBER as ROWNUMBER,
+TO_TIMESTAMP_NTZ(current_timestamp) as LOAD_DATE
+FROM @MANAGE_DB.EXTERNAL_STAGES.PARQUETSTAGE;
+```
+
+---
+
+## 8. Final Data Insert and Table Creation
+
+### Step 1: Create Destination Table for Final Data
+
+```sql
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.PARQUET_DATA (
+    ROW_NUMBER int,
+    index_level int,
+    cat_id VARCHAR(50),
+    date date,
+    dept_id VARCHAR(50),
+    id VARCHAR(50),
+    item_id VARCHAR(50),
+    state_id VARCHAR(50),
+    store_id VARCHAR(50),
+    value int,
+    Load_date timestamp default TO_TIMESTAMP_NTZ(current_timestamp));
+```
+
+### Step 2: Load Data into Final Table
+
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.PARQUET_DATA
+    FROM (SELECT 
+            METADATA$FILE_ROW_NUMBER,
+            $1:__index_level_0__::int,
+            $1:cat_id::VARCHAR(50),
+            DATE($1:date::int ),
+            $1:"dept_id"::VARCHAR(50),
+            $1:"id"::VARCHAR(50),
+            $1:"item_id"::VARCHAR(50),
+            $1:"state_id"::VARCHAR(50),
+            $1:"store_id"::VARCHAR(50),
+            $1:"value"::int,
+            TO_TIMESTAMP_NTZ(current_timestamp)
+        FROM @MANAGE_DB.EXTERNAL_STAGES.PARQUETSTAGE);
+```
+
+---
 
 ## Conclusion
-This document explores advanced COPY options in Snowflake, enabling more control and flexibility in data loading. By understanding and using these options effectively, users can optimize data workflows, handle errors gracefully, and maintain data integrity. Copy and execute the SQL commands as needed to enhance your Snowflake data management strategy. Happy querying!
 
+This document outlines the essential steps and SQL commands for efficiently managing raw and structured data within Snowflake. By following the steps provided, users can load raw JSON and Parquet data, parse and analyze it, handle nested data and arrays, aggregate hierarchical data, and query efficiently. Additionally, the metadata and transformation steps ensure that the data can be loaded into final destination tables for reporting or further analysis.
+
+---
+```
+
+This `README.md` is structured to guide users through a data pipeline process for working with JSON and Parquet data in Snowflake, including SQL code for each step. It is designed for easy copy-paste execution without skipping any necessary details.
