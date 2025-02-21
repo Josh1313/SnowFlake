@@ -36,10 +36,12 @@ Work patterns may change over time; revisit and refine classifications regularly
 
 ## Snowflake SQL Commands
 ### Create Virtual Warehouses
+We specified the creation command, then the name of the warehouse, and last, we define the properties of the warehouse
 #### Data Scientists
 ```sql
 CREATE WAREHOUSE DS_WH
-  WITH WAREHOUSE_SIZE = 'SMALL'
+  WITH 
+  WAREHOUSE_SIZE = 'SMALL'
   WAREHOUSE_TYPE = 'STANDARD'
   AUTO_SUSPEND = 300
   AUTO_RESUME = TRUE
@@ -51,7 +53,8 @@ CREATE WAREHOUSE DS_WH
 #### DBA
 ```sql
 CREATE WAREHOUSE DBA_WH
-  WITH WAREHOUSE_SIZE = 'XSMALL'
+  WITH 
+  WAREHOUSE_SIZE = 'XSMALL'
   WAREHOUSE_TYPE = 'STANDARD'
   AUTO_SUSPEND = 300
   AUTO_RESUME = TRUE
@@ -107,6 +110,39 @@ DROP WAREHOUSE DBA_WH;
 ```
 
 ---
+## Scaling up
+*-* Increasing the size of a virtual warehouses
+*-* More Complex Query
+
+```sql
+ALTER WAREHOUSE COMPUTE_WH SUSPEND;
+
+ALTER WAREHOUSE COMPUTE_WH RESUME;
+
+
+ALTER WAREHOUSE COMPUTE_WH
+    SET 
+        WAREHOUSE_SIZE = 'SMALL',
+        MIN_CLUSTER_COUNT = 1,
+        MAX_CLUSTER_COUNT = 1,
+        SCALING_POLICY = 'STANDARD',
+        AUTO_SUSPEND = 600,
+        AUTO_RESUME = TRUE;
+```
+
+
+```sql
+ALTER WAREHOUSE COMPUTE_WH
+SET WAREHOUSE_SIZE = 'SMALL'
+
+```
+# OR use GUI
+admin --> warehouses --> select the three dots next to the ware in question and edit
+
+## Scaling out
+*-* Using addition warehouses / Multicluster warehouses
+*-* More Concurrent Users
+Example how to alter the warehouse properties
 
 ## Notes
 - Copy and paste the above commands directly into Snowflake's query editor.
