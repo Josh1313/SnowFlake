@@ -203,7 +203,10 @@ Columns that are used most frequently in WHERE-CLAUSES (often date columns for e
 If yoy typically use filters on two columns the table can also benefit from two cluster keys
 
 # Hands on
-- Publicly accessible staging area    
+
+![alt text](image-4.png)
+- Publicly accessible staging area 
+
 ```sql
 CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage
     url='s3://bucketsnowflakes3';
@@ -222,8 +225,8 @@ COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS
     file_format= (type = csv field_delimiter=',' skip_header=1)
     pattern='.*OrderDetails.*';
 ```    
-
-    
+// IF YOU CREATED BEFORE DONT NEED IT TE THREE LINE ABOVE
+//SELECT * FROM OUR_FIRST_DB.PUBLIC.ORDERS;    
 
 -- Create table
 
@@ -264,8 +267,11 @@ SELECT * FROM ORDERS_CACHING  WHERE DATE = '2020-06-09';
 ALTER TABLE ORDERS_CACHING CLUSTER BY ( DATE ) ;
 ```
 
+--  Takes about 15m up to 1 hour for changes to take effect after adding the key.
+-- also change the date to see how the partitions works
+
 ```sql
-SELECT * FROM ORDERS_CACHING  WHERE DATE = '2020-01-05';
+SELECT * FROM ORDERS_CACHING  WHERE DATE = '2020-01-08';
 ```
 
 
