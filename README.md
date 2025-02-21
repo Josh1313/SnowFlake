@@ -111,8 +111,9 @@ DROP WAREHOUSE DBA_WH;
 
 ---
 ## Scaling up
-*-* Increasing the size of a virtual warehouses
-*-* More Complex Query
+*- Increasing the size of a virtual warehouses
+*- More Complex Query
+Example how to alter the warehouse properties
 
 ```sql
 ALTER WAREHOUSE COMPUTE_WH SUSPEND;
@@ -130,7 +131,7 @@ ALTER WAREHOUSE COMPUTE_WH
         AUTO_RESUME = TRUE;
 ```
 
-
+## Increase the size of the warehouse
 ```sql
 ALTER WAREHOUSE COMPUTE_WH
 SET WAREHOUSE_SIZE = 'SMALL'
@@ -140,9 +141,9 @@ SET WAREHOUSE_SIZE = 'SMALL'
 admin --> warehouses --> select the three dots next to the ware in question and edit
 
 ## Scaling out
-*-* Using addition warehouses / Multicluster warehouses
-*-* More Concurrent Users
-Example how to alter the warehouse properties
+*- Using addition warehouses / Multicluster warehouses
+*- More Concurrent Users
+
 
 ## Notes
 - Copy and paste the above commands directly into Snowflake's query editor.
