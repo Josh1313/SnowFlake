@@ -1,338 +1,293 @@
-# Loading Data from AWS S3 to Snowflake
+# Loading Data from Azure to Snowflake
 
 ## Overview
-This document provides a step-by-step guide on how to load data from an AWS S3 bucket into Snowflake. We will cover the creation of an S3 bucket, configuring the necessary IAM roles and policies, setting up Snowflake integration, and updating the trust policy for seamless data loading.
+This document provides a step-by-step guide on how to load data from an Azure Storage Account into Snowflake. We will cover the creation of a storage account, setting up containers, uploading files, and configuring Snowflake integration for seamless data loading.
 
 ## Index
-- [Step 1: Creating an S3 Bucket](#step-1-creating-an-s3-bucket)
-- [Step 2: Configuring IAM Policies](#step-2-configuring-iam-policies)
-- [Step 3: Setting Up Snowflake Integration](#step-3-setting-up-snowflake-integration)
-- [Step 4: Updating AWS Trust Policy](#step-4-updating-aws-trust-policy)
+- [Step 1: Creating an Azure Storage Account](#step-1-creating-an-azure-storage-account)
+- [Step 2: Creating and Uploading to Containers](#step-2-creating-and-uploading-to-containers)
+- [Step 3: Collecting Required Azure Information](#step-3-collecting-required-azure-information)
+- [Step 4: Integrating with Snowflake](#step-4-integrating-with-snowflake)
 - [Conclusion](#conclusion)
 
 ---
 
-## Step 1: Creating an S3 Bucket
-1. Go to **S3** → **Create bucket**.
-2. Choose the same region as your Snowflake account to avoid additional expenses.
-3. Enter a **Bucket Name** (e.g., `my-snowflake-bucket`).
-4. Choose **General Purpose** and click **Create Bucket**.
-5. After creating the bucket, select it and create two folders:
-    - One for JSON files
-    - One for CSV files
-6. Upload your JSON and CSV files to the corresponding folders.
+## Step 1: Creating an Azure Storage Account
+1. Ensure you have an **Azure account**.
+2. In the **Search Bar**, type **Storage Account** and select the **+ Create** button.
+3. Enter the following details:
+    - **Resource Group**: Use an existing one or create a new one (e.g., `snowflake`).
+    - **Storage Account Name**: Choose a unique name (e.g., `snowflakeawsgcp`).
+    - **Region**: Select the same region as your Snowflake account.
+    - **Redundancy**: Choose **Locally Redundant Storage (LRS)** for testing purposes.
+4. Click **Review + Create**, verify the details, and select **Create**.
 
-You have now successfully created an S3 bucket.
-
----
-
-## Step 2: Configuring IAM Policies
-This step establishes a connection between the S3 bucket and Snowflake by creating a new role in AWS IAM.
-
-1. Go to **IAM** in AWS.
-2. On the left, select **Roles**.
-3. Click **Create Role**.
-4. Choose **AWS Account** → **This Account**.
-5. Select **Require External ID** and enter `00000` as a temporary value.
-6. Click **Next**.
-7. Search for **S3** and select **AmazonS3FullAccess**.
-8. Click **Next**.
-9. Name the role as `snowflake-access-role`.
-10. Add a description: "This role is used to grant access to Snowflake".
-11. Click **Create Role**.
-
-Configuration is done, but we need to update it with information from Snowflake.
+At this point, your Azure Storage Account is successfully created.
 
 ---
 
-## Step 3: Setting Up Snowflake Integration
-1. Log in to Snowflake and open a new worksheet.
-2. Retrieve the S3 bucket name and file names, then use them in the Snowflake object creation.
-3. In AWS, go to **IAM** and select the role created for Snowflake.
-4. Copy the **ARN Number** of the role.
-5. In Snowflake, create a stage u:
-6. Note the following values:
-    - `STORAGE_AWS_IAM_USER_ARN` → (1)
-    - `STORAGE_AWS_EXTERNAL_ID` → (2)
+## Step 2: Creating and Uploading to Containers
+1. Go to **Storage Accounts** and select your newly created storage account.
+2. Navigate to **Data Storage** → **Containers**.
+3. Click **+ Container** and create two containers:
+    - One for CSV files (`csv`)
+    - One for JSON files (`json`)
+4. After creation, select a container and click **+ Upload**.
+5. Click **Browse File**, select the files to upload, and click **Upload**.
+6. Repeat the process for all files in both containers.
+
+Your data is now stored and ready for integration with Snowflake.
 
 ---
 
-## Step 4: Updating AWS Trust Policy
-1. In AWS, select the role created for Snowflake.
-2. Go to **Trusted Relationships** → **Edit Trust Policy**.
-3. Update the following values:
-```json
-"AWS": "(1) ",
-"sts:ExternalId": "(2)"
-```
-4. Click **Update Policy**.
+## Step 3: Collecting Required Azure Information
+Before integrating with Snowflake, collect the following details from Azure:
+1. **Tenant ID**:
+    - Search for **Tenant Properties** in the Azure search bar.
+    - Copy the **Tenant ID** from the **Tenant Properties** page.
+2. **Storage Account Name** (e.g., `snowflakeawsgcp`).
+3. **Container Names** (`csv`, `json`).
 
-With these steps, the S3 bucket and Snowflake integration are successfully configured, enabling seamless data loading.
+---
 
-5. ## Code Storage Integration Object
-
- Create storage integration object
+## Step 4: Integrating with Snowflake
+Use the collected Azure details in the following Snowflake commands to create the integration.
 
 ```sql
-create or replace storage integration s3_int
+USE DATABASE DEMO_DB;
+
+CREATE OR REPLACE STORAGE INTEGRATION azure_integration
   TYPE = EXTERNAL_STAGE
-  STORAGE_PROVIDER = S3
-  ENABLED = TRUE 
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::110991281769:role/snowflake-acces-role'
-  STORAGE_ALLOWED_LOCATIONS = ('s3://snowflake1985es/csv/', 's3://snowflake1985es/json/')
-   COMMENT = 'This an optional comment' ;
-```   
-   
-   
--- See storage integration properties to fetch external_id so we can update it in S3
+  STORAGE_PROVIDER = AZURE
+  ENABLED = TRUE
+  AZURE_TENANT_ID = '<tenant_id>'
+  STORAGE_ALLOWED_LOCATIONS = ('azure://your-storage-account-name.blob.core.windows.net/csv',
+  'azure://your-storage-account-name.blob.core.windows.net/json');
 
-```sql
-DESC integration s3_int;
+-- Describe integration object to provide access
+DESC STORAGE integration azure_integration;
 ```
 
-
--- We have full integrated and stablish conection we load the data from s3
-
--- Create table first
+### Create Database File Format & Stage Objects
 ```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.movie_titles (
-  show_id STRING,
-  type STRING,
-  title STRING,
-  director STRING,
-  cast STRING,
-  country STRING,
-  date_added STRING,
-  release_year STRING,
-  rating STRING,
-  duration STRING,
-  listed_in STRING,
-  description STRING )
-  ```
-  
-  
-
--- Create file format object here we have a intentional issue where we see a few thing how to fixed
+CREATE OR REPLACE DATABASE DEMO_DB;
+```
 
 ```sql
-CREATE OR REPLACE file format MANAGE_DB.file_formats.csv_fileformat
-    type = csv
-    field_delimiter = ','
-    skip_header = 1
-    null_if = ('NULL','null')
-    empty_field_as_null = TRUE;
-```    
-    
-    
---  Create stage object with integration object & file format object
+CREATE OR REPLACE FILE FORMAT demo_db.public.fileformat_azure
+    TYPE = CSV
+    FIELD_DELIMITER = ','
+    SKIP_HEADER = 1;
+```
+```sql
+CREATE OR REPLACE STAGE demo_db.public.stage_azure
+    STORAGE_INTEGRATION = azure_integration
+    URL = 'azure://your-storage-account-name.blob.core.windows.net/csv'
+    FILE_FORMAT = fileformat_azure;
+```
+
+### Query & Load Data
+```sql
+LIST @demo_db.public.stage_azure;
+```
+
+---- Query files & Load data ----
+
+--query files
 
 ```sql
-CREATE OR REPLACE stage MANAGE_DB.external_stages.csv_folder
-    URL = 's3://snowflake1985es/csv/'
-    STORAGE_INTEGRATION = s3_int
-    FILE_FORMAT = MANAGE_DB.file_formats.csv_fileformat
-```    
-
-
-
---  Use Copy command 
+SELECT 
+$1,
+$2,
+$3,
+$4,
+$5,
+$6,
+$7,
+$8,
+$9,
+$10,
+$11,
+$12,
+$13,
+$14,
+$15,
+$16,
+$17,
+$18,
+$19,
+$20
+FROM @demo_db.public.stage_azure;
+```
 
 ```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.movie_titles
-    FROM @MANAGE_DB.external_stages.csv_folder
-```    
-    
-    
-    
-    
-    
---  Create file format object // already fixed
-
-```sql
-CREATE OR REPLACE file format MANAGE_DB.file_formats.csv_fileformat
-    type = csv
-    field_delimiter = ','
-    skip_header = 1
-    null_if = ('NULL','null')
-    empty_field_as_null = TRUE    
-    FIELD_OPTIONALLY_ENCLOSED_BY = '"'    
+create or replace table happiness (
+    country_name varchar,
+    regional_indicator varchar,
+    ladder_score number(4,3),
+    standard_error number(4,3),
+    upperwhisker number(4,3),
+    lowerwhisker number(4,3),
+    logged_gdp number(5,3),
+    social_support number(4,3),
+    healthy_life_expectancy number(5,3),
+    freedom_to_make_life_choices number(4,3),
+    generosity number(4,3),
+    perceptions_of_corruption number(4,3),
+    ladder_score_in_dystopia number(4,3),
+    explained_by_log_gpd_per_capita number(4,3),
+    explained_by_social_support number(4,3),
+    explained_by_healthy_life_expectancy number(4,3),
+    explained_by_freedom_to_make_life_choices number(4,3),
+    explained_by_generosity number(4,3),
+    explained_by_perceptions_of_corruption number(4,3),
+    dystopia_residual number (4,3));
 ```    
     
 ```sql    
-SELECT * FROM OUR_FIRST_DB.PUBLIC.movie_titles
+COPY INTO HAPPINESS
+FROM @demo_db.public.stage_azure;
 ```
-## successfully Done with CSV files from AWS
 
 
--- Taming the JSON file// we need to create a format and the appropiate stage for json files
-## Now  We Start with JSON files
+```sql
+SELECT * FROM HAPPINESS;
+```
 
--- Create file format object // Update for json
+--- Load JSON ----
+
 ```sql 
-CREATE OR REPLACE file format MANAGE_DB.file_formats.json_fileformat
-    type = JSON  
+create or replace file format demo_db.public.fileformat_azure_json
+    TYPE = JSON;
+```
+```sql  
+create or replace stage demo_db.public.stage_azure
+    STORAGE_INTEGRATION = azure_integration
+    URL = 'azure://snowflakeawsazure.blob.core.windows.net/json'
+    FILE_FORMAT = fileformat_azure_json; 
 ```    
-
---  Create stage object with integration object & json file format object
-
-```sql 
-CREATE OR REPLACE stage MANAGE_DB.external_stages.json_folder
-    URL = 's3://snowflake1985es/json/'
-    STORAGE_INTEGRATION = s3_int
-    FILE_FORMAT = MANAGE_DB.file_formats.json_fileformat
+```sql
+ DESC INTEGRATION azure_integration; 
 ```
 
+-- THIS IS JUST IN CASE WE NNED TO ALTE BY SET THE LOCATION OF OUR CONTAINERS
+-- ALTER INTEGRATION azure_integration
+-- SET STORAGE_ALLOWED_LOCATIONS =('azure://snowflakeawsazure.blob.core.windows.net/csv','azure://snowflakeawsazure.blob.core.windows.net/json')
 
---  First query from S3 Bucket   // if we dont know the schema we can query
-
-```sql 
-SELECT * FROM @MANAGE_DB.external_stages.json_folder;
+```sql  
+LIST  @demo_db.public.stage_azure;
 ```
 
+-- Query from stage  
+
+```sql
+SELECT * FROM @demo_db.public.stage_azure; 
+``` 
 
 
--- Introduce columns 
+-- Query one attribute/column
 
-```sql 
+```sql
+SELECT $1:"Car Model" FROM @demo_db.public.stage_azure; 
+```
+  
+-- Convert data type  
+```sql
+SELECT $1:"Car Model"::STRING FROM @demo_db.public.stage_azure; 
+```
+
+-- Query all attributes  
+
+```sql
 SELECT 
-$1:asin,
-$1:helpful,
-$1:overall,
-$1:reviewText,
-$1:reviewTime,
-$1:reviewerID,
-$1:reviewTime,
-$1:reviewerName,
-$1:summary,
-$1:unixReviewTime
-FROM @MANAGE_DB.external_stages.json_folder;
+$1:"Car Model"::STRING, 
+$1:"Car Model Year"::INT,
+$1:"car make"::STRING, 
+$1:"first_name"::STRING,
+$1:"last_name"::STRING
+FROM @demo_db.public.stage_azure;   
 ```
+  
+-- Query all attributes and use aliases 
 
--- Format columns & use DATE function
-
-```sql 
+```sql
 SELECT 
-$1:asin::STRING as ASIN,
-$1:helpful as helpful,
-$1:overall as overall,
-$1:reviewText::STRING as reviewtext,
-$1:reviewTime::STRING,
-$1:reviewerID::STRING,
-$1:reviewTime::STRING,
-$1:reviewerName::STRING,
-$1:summary::STRING,
-DATE($1:unixReviewTime::int) as Revewtime
-FROM @MANAGE_DB.external_stages.json_folder;
+$1:"Car Model"::STRING as car_model, 
+$1:"Car Model Year"::INT as car_model_year,
+$1:"car make"::STRING as "car make", 
+$1:"first_name"::STRING as first_name,
+$1:"last_name"::STRING as last_name
+FROM @demo_db.public.stage_azure;     
 ```
 
--- Format columns & handle custom date // template
-
+```sql
+Create or replace table car_owner (
+    car_model varchar, 
+    car_model_year int,
+    car_make varchar, 
+    first_name varchar,
+    last_name varchar);
+```    
 ```sql 
-SELECT 
-$1:asin::STRING as ASIN,
-$1:helpful as helpful,
-$1:overall as overall,
-$1:reviewText::STRING as reviewtext,
-DATE_FROM_PARTS( <year>, <month>, <day> )
-$1:reviewTime::STRING,
-$1:reviewerID::STRING,
-$1:reviewTime::STRING,
-$1:reviewerName::STRING,
-$1:summary::STRING,
-DATE($1:unixReviewTime::int) as Revewtime
-FROM @MANAGE_DB.external_stages.json_folder;
+COPY INTO car_owner
+FROM
+(SELECT 
+$1:"Car Model"::STRING as car_model, 
+$1:"Car Model Year"::INT as car_model_year,
+$1:"car make"::STRING as "car make", 
+$1:"first_name"::STRING as first_name,
+$1:"last_name"::STRING as last_name
+FROM @demo_db.public.stage_azure);
 ```
 
--- Use DATE_FROM_PARTS and see another difficulty// intentionally error because the substring might not always contain a proper number
-
-```sql 
-SELECT 
-$1:asin::STRING as ASIN,
-$1:helpful as helpful,
-$1:overall as overall,
-$1:reviewText::STRING as reviewtext,
-DATE_FROM_PARTS( RIGHT($1:reviewTime::STRING,4), LEFT($1:reviewTime::STRING,2), SUBSTRING($1:reviewTime::STRING,4,2) ),
-$1:reviewerID::STRING,
-$1:reviewTime::STRING,
-$1:reviewerName::STRING,
-$1:summary::STRING,
-DATE($1:unixReviewTime::int) as unixRevewtime
-FROM @MANAGE_DB.external_stages.json_folder;
+```sql
+SELECT * FROM CAR_OWNER;
 ```
 
 
--- Use DATE_FROM_PARTS and handle the case difficulty// fix used case
+-- Alternative: Using a raw file table step
 
-```sql 
-SELECT 
-$1:asin::STRING as ASIN,
-$1:helpful as helpful,
-$1:overall as overall,
-$1:reviewText::STRING as reviewtext,
-DATE_FROM_PARTS( 
-  RIGHT($1:reviewTime::STRING,4), 
-  LEFT($1:reviewTime::STRING,2), 
-  CASE WHEN SUBSTRING($1:reviewTime::STRING,5,1)=',' 
-        THEN SUBSTRING($1:reviewTime::STRING,4,1) ELSE SUBSTRING($1:reviewTime::STRING,4,2) END),
-$1:reviewerID::STRING,
-$1:reviewTime::STRING,
-$1:reviewerName::STRING,
-$1:summary::STRING,
-DATE($1:unixReviewTime::int) as UnixRevewtime
-FROM @MANAGE_DB.external_stages.json_folder;
+```sql
+truncate table car_owner;
+select * from car_owner;
 ```
 
-
--- Create destination table
-
-```sql 
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.reviews (
-asin STRING,
-helpful STRING,
-overall STRING,
-reviewtext STRING,
-reviewtime DATE,
-reviewerid STRING,
-reviewername STRING,
-summary STRING,
-unixreviewtime DATE
-);
+```sql
+create or replace table car_owner_raw (
+  raw variant);
 ```
 
---  Copy transformed data into destination table
-```sql 
-COPY INTO OUR_FIRST_DB.PUBLIC.reviews
-    FROM (SELECT 
-$1:asin::STRING as ASIN,
-$1:helpful as helpful,
-$1:overall as overall,
-$1:reviewText::STRING as reviewtext,
-DATE_FROM_PARTS( 
-  RIGHT($1:reviewTime::STRING,4), 
-  LEFT($1:reviewTime::STRING,2), 
-  CASE WHEN SUBSTRING($1:reviewTime::STRING,5,1)=',' 
-        THEN SUBSTRING($1:reviewTime::STRING,4,1) ELSE SUBSTRING($1:reviewTime::STRING,4,2) END),
-$1:reviewerID::STRING,
-$1:reviewerName::STRING,
-$1:summary::STRING,
-DATE($1:unixReviewTime::int) Revewtime
-FROM @MANAGE_DB.external_stages.json_folder);
-```  
-    
---  Validate results
+```sql
+COPY INTO car_owner_raw
+FROM @demo_db.public.stage_azure;
+```
 
-```sql 
-SELECT * FROM OUR_FIRST_DB.PUBLIC.reviews ;
+```sql
+SELECT * FROM car_owner_raw;
+```
+```sql    
+INSERT INTO car_owner  
+(SELECT 
+$1:"Car Model"::STRING as car_model, 
+$1:"Car Model Year"::INT as car_model_year,
+$1:"car make"::STRING as car_make, 
+$1:"first_name"::STRING as first_name,
+$1:"last_name"::STRING as last_name
+FROM car_owner_raw)  ;
+```
+  
+```sql  
+select * from car_owner;
 ```
 
 ---
 
 ## Conclusion
 You have now successfully:
-- Created an S3 bucket in the correct region
-- Configured IAM roles and policies
-- Set up Snowflake integration
-- Updated the AWS trust policy
+- Created an Azure Storage Account
+- Configured and uploaded files into Azure containers
+- Retrieved the necessary details for integration
+- Set up Snowflake integration for data loading
 
-You can now continue working with your data in Snowflake efficiently.
+Your data is now ready to be accessed and processed in Snowflake.
 
