@@ -323,10 +323,7 @@ FROM @MANAGE_DB.external_stages.json_folder);
 
 ```sql 
 SELECT * FROM OUR_FIRST_DB.PUBLIC.reviews ;
-```sql 
-    
-    
-   
+```
 
 ---
 
