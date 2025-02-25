@@ -109,7 +109,7 @@ To fully set up Snowpipe, you need to complete two additional steps:
 ---
 
 ## Step 7: Configuring Event Notifications
-1. In the left-hand side menu, look for **Events** (with a yellow lightning bolt icon) and select it.
+1. In the left-hand side menu, look for **⚡Events** (⚡) and select it.
 2. Click on **+ Event Subscription**.
 3. Enter the following details:
     - **Name**: Unique name for the event
