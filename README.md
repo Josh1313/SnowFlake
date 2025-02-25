@@ -1,244 +1,152 @@
-# Setting up Snowpipe with AWS
+# Setting up Snowpipe with Azure
+![alt text](image.png)
+![alt text](image-1.png)
 
 ## Overview
-This document provides a step-by-step guide on how to set up Snowpipe in Snowflake using AWS S3 for continuous data loading. Snowpipe automatically loads data as soon as files appear in the S3 bucket, ideal for scenarios where data must be immediately available for analysis. This guide covers creating stages, testing with COPY commands, creating the pipe, and setting up S3 notifications.
+This document provides a step-by-step guide on how to set up Snowpipe in Snowflake using Azure Blob Storage for continuous data loading. Snowpipe automatically loads data as soon as files appear in the Azure container, ideal for scenarios where data must be immediately available for analysis. This guide covers creating storage accounts, setting up containers, collecting necessary Azure information, configuring Snowflake integration, and granting permissions.
 
 ## Index
-- [What is Snowpipe?](#what-is-snowpipe)
-- [Step 1: Creating the Storage Integration](#step-1-creating-the-storage-integration)
-- [Step 2: Creating Table and File Format](#step-2-creating-table-and-file-format)
-- [Step 3: Creating Stage](#step-3-creating-stage)
-- [Step 4: Creating Pipe](#step-4-creating-pipe)
-- [Step 5: Setting up S3 Event Notification](#step-5-setting-up-s3-event-notification)
-- [Step 6: Testing and Error Handling](#step-6-testing-and-error-handling)
-- [Step 7: Managing Pipes](#step-7-managing-pipes)
+- [Prerequisites](#prerequisites)
+- [Step 1: Creating a Storage Account](#step-1-creating-a-storage-account)
+- [Step 2: Creating and Uploading to Containers](#step-2-creating-and-uploading-to-containers)
+- [Step 3: Collecting Required Azure Information](#step-3-collecting-required-azure-information)
+- [Step 4: Creating Snowflake Integration](#step-4-creating-snowflake-integration)
+- [Step 5: Granting Permissions in Azure](#step-5-granting-permissions-in-azure)
 - [Conclusion](#conclusion)
 
 ---
 
-## What is Snowpipe?
-Snowpipe is a continuous data loading feature in Snowflake that automatically loads files as they appear in an S3 bucket. It is designed for real-time data ingestion and is not intended for batch processing. Snowpipe uses event notifications from S3 to trigger data loading into Snowflake tables.
-
-![alt text](image.png)
-
-![alt text](image-1.png)
+## Prerequisites
+Ensure you have an **Azure account**.
 
 ---
 
-## Step 1: Creating the Storage Integration
+## Step 1: Creating a Storage Account
+1. In the **Search Bar**, type **Storage Account** and select the **+ Create** button.
+2. Enter the following details:
+    - **Resource Group**: Use an existing one or create a new one (e.g., `snowflake`).
+    - **Storage Account Name**: Choose a unique name (e.g., `snowflakeawsgcp`).
+    - **Region**: Select the same region as your Snowflake account.
+    - **Redundancy**: Choose **Locally Redundant Storage (LRS)** for testing purposes.
+3. Click **Review + Create**, verify the details, and select **Create**.
+
+At this point, your Azure Storage Account is successfully created.
+
+---
+
+## Step 2: Creating and Uploading to Containers
+1. Go to **Storage Accounts** and select your newly created storage account.
+2. Navigate to **Data Storage** → **Containers**.
+3. Click **+ Container** and create one container for Snowpipe:
+    - **snowpipecsv** for CSV files
+4. After creation, select the container and click **+ Upload**.
+5. Click **Browse File**, select the files to upload, and click **Upload**.
+
+Your data is now stored and ready for integration with Snowflake.
+
+---
+
+## Step 3: Collecting Required Azure Information
+Before integrating with Snowflake, collect the following details from Azure:
+1. **Tenant ID**:
+    - Search for **Tenant Properties** in the Azure search bar.
+    - Copy the **Tenant ID** from the **Tenant Properties** page.
+2. **Storage Account Name** (e.g., `snowflakeawsgcp`).
+3. **Container Name** (`snowpipecsv`).
+
+---
+
+## Step 4: Creating Snowflake Integration
 ```sql
-CREATE OR REPLACE STORAGE INTEGRATION s3_int
+CREATE OR REPLACE DATABASE SNOWPIPE;
+
+CREATE OR REPLACE STORAGE INTEGRATION azure_snowpipe_integration
   TYPE = EXTERNAL_STAGE
-  STORAGE_PROVIDER = S3
+  STORAGE_PROVIDER = AZURE
   ENABLED = TRUE
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::110991281769:role/snowflake-access-role'
-  STORAGE_ALLOWED_LOCATIONS = ('s3://snowflakeaws1985/csv/', 's3://snowflakeaws1985/json/', 's3://snowflakeaws1985/snowpipe/')
-  COMMENT = 'This an optional comment';
+  AZURE_TENANT_ID = 'dae2c9e3-5d25-4628-a32f-6077ffaede10'
+  STORAGE_ALLOWED_LOCATIONS = ('azure://snowflakeawsgcp.blob.core.windows.net/snowpipecsv');
 ```
-## Describe  in case you havent configure your role
+-- -- Describe integration object to provide access
 ```sql
-DESC INTEGRATION s3_int;
+DESC STORAGE INTEGRATION azure_snowpipe_integration;
 ```
+
+### Granting Access
+- In the Snowflake description output, look for `AZURE_CONSENT_URL`.
+- Copy the **AZURE_CONSENT_URL** and paste it into a new browser window where you are logged into your Azure account to grant authorization.
+- After granting permission, you will receive an **Application ID**. Copy and save this ID for later use.
 
 ---
 
-## Step 2: Creating Table and File Format
-```sql
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.employees (
-  id INT,
-  first_name STRING,
-  last_name STRING,
-  email STRING,
-  location STRING,
-  department STRING);
-```  
-```sql
-CREATE OR REPLACE FILE FORMAT MANAGE_DB.file_formats.csv_fileformat
-  TYPE = CSV
-  FIELD_DELIMITER = ','
-  SKIP_HEADER = 1
-  NULL_IF = ('NULL','null')
-  EMPTY_FIELD_AS_NULL = TRUE;
-```
+## Step 5: Granting Permissions in Azure
+1. Go to **Storage Account** → **Your Container** → **Access Control (IAM)**.
+2. Click on the **+ Add** icon → **Add role assignment**.
+3. In the **Search Bar**, type **Storage Blob Data Reader** and select it.
+4. Click **Next**.
+5. Click on **+ Select Members**.
+6. In the **Search Bar** on the right-side pop-up window, paste the **Application ID** copied from the Azure consent step.
+7. Select the application and click **Continue**.
+
+Permissions are now successfully granted to Snowflake.
+
 
 ---
 
-## Step 3: Creating Stage
-```sql
-CREATE OR REPLACE STAGE MANAGE_DB.external_stages.csv_folder
-  URL = 's3://snowflakeaws1985/csv/snowpipe'
-  STORAGE_INTEGRATION = s3_int
-  FILE_FORMAT = MANAGE_DB.file_formats.csv_fileformat;
+## After Successful Connection: Setting up Queue and Notifications
 
-LIST @MANAGE_DB.external_stages.csv_folder;
-```
+To fully set up Snowpipe, you need to complete two additional steps:
+- **Queue Setup**
+- **Notifications**
 
 ---
 
-## Step 4: Creating Pipe & schema to keep things organized
-
--- Create schema to keep things organized
-```sql
-CREATE OR REPLACE SCHEMA MANAGE_DB.pipes;
-```
-
--- Define pipe// at this stage you should test before creating the pipe to check if everyting work perfectly copy into == select
-```sql
-CREATE OR REPLACE PIPE MANAGE_DB.pipes.employee_pipe
-AUTO_INGEST = TRUE
-AS
-COPY INTO OUR_FIRST_DB.PUBLIC.employees
-FROM @MANAGE_DB.external_stages.csv_folder;
-```  
--- Describe pipe copy the value of notification_channel after this go into step 5 
-```sql
-DESC pipe employee_pipe;
-DESC PIPE MANAGE_DB.pipes.employee_pipe;
-```
--- 
-```sql
-SELECT COUNT(*) FROM OUR_FIRST_DB.PUBLIC.employees;
-```
+## Step 6: Setting up Queue in Azure
+1. Go to **Storage Account** → **Your Container** → **Data Storage** → **Queue**.
+2. Click on the **+ Queue** icon.
+3. **Queue Name**: Enter a unique name and click **OK**.
 
 ---
 
-## Step 5: Setting up S3 Event Notification
-1. Go to **AWS Console** → **S3** → **Bucket** → **Properties**.
-2. Scroll to **Event Notifications** and click **Create Event Notification**.
-3. **Event Name**: Unique-name
-4. **Prefix**: `csv/snowpipe`
-5. **Suffix**: (Optional)
-6. **Event Type**: Select **All Object Create Events**
-7. **Destination**: Select **SQS queue**
-8. **Enter SQS queue ARN**: Paste the value from Snowflake's Notification Channel
-9. Click **Save**.
+## Step 7: Configuring Event Notifications
+1. In the left-hand side menu, look for **Events** (with a yellow lightning bolt icon) and select it.
+2. Click on **+ Event Subscription**.
+3. Enter the following details:
+    - **Name**: Unique name for the event
+    - **Event Schema**: Leave as default
+    - **System Topic**: Same as the name
+    - **Filter Events Type**: Select **Only Blob Created**
+    - **End Point Type**: Choose **Storage Queue**
+4. Click **Configure End Point**.
+5. In the right-side pop-up window:
+    - **Storage Account**: Select your storage account
+    - **Queue**: Select the queue previously created
+6. Click **OK**.
+
+**Note:** You may encounter an error, but don't worry. Continue with the following steps.
 
 ---
 
-## Step 6: Testing and Error Handling
+## Step 8: Registering Event Grid in Azure
+1. Copy your Azure URL and paste it into a new browser window:  
+   `https://portal.azure.com/?quickstart=true#home`
+2. In the **Search Bar**, type **Subscription** and select your subscription.
+3. In **Settings**, go to **Resource Providers**.
+4. In the **Search Bar**, type **Event**.
+5. Select **Microsoft.EventGrid**.
+6. In the upper left-hand side, click **Register**.
 
--- Create file format object field_delimiter = '|' TO CREATE AND  ERROR IN DATA 3
-
-```sql
-CREATE OR REPLACE file format MANAGE_DB.file_formats.csv_fileformat
-    type = csv
-    field_delimiter = ','
-    skip_header = 1
-    null_if = ('NULL','null')
-    empty_field_as_null = TRUE;
-``` 
-```sql   
-SELECT COUNT(*) FROM OUR_FIRST_DB.PUBLIC.employees ; 
-``` 
-```sql
-ALTER PIPE employee_pipe refresh;
-```
-
--- Validate pipe is actually working
-```sql
-SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe');
-```
--- Snowpipe error message
-```sql
-SELECT * FROM TABLE(VALIDATE_PIPE_LOAD(
-  PIPE_NAME => 'MANAGE_DB.pipes.employee_pipe',
-  START_TIME => DATEADD(HOUR,-2,CURRENT_TIMESTAMP())));
-```
-
---COPY command history from table to see error massage
-
-```sql
-SELECT * FROM TABLE (INFORMATION_SCHEMA.COPY_HISTORY(
-  TABLE_NAME  =>  'OUR_FIRST_DB.PUBLIC.EMPLOYEES',
-  START_TIME => DATEADD(HOUR,-2,CURRENT_TIMESTAMP())));
-```
-
----
-
-## Step 7: Managing Pipes
-```sql
--- SHOW  ALL PIPES IN A LIST
-SHOW PIPES;
--- SEARCHING FOR EMPLOYEES USING WILDCARDS
-SHOW PIPES LIKE '%employee%';
--- SEARCHING FOR PIPE IN A UNIQUE DATABASE
-SHOW PIPES IN DATABASE MANAGE_DB;
--- SEARCHING FOR SCHEMA 
-SHOW PIPES IN SCHEMA MANAGE_DB.pipes;
--- ALSO COMBINING THE SEARCHING METHODS
-SHOW PIPES like '%employee%' in Database MANAGE_DB;
-```
-## Changing pipe (alter stage or file format) --
-```sql
--- Preparation table first
-CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.employees2 (
-  id INT,
-  first_name STRING,
-  last_name STRING,
-  email STRING,
-  location STRING,
-  department STRING
-  );
-```  
--- Pause pipe// BASE PRACTICES PAUSE
-```sql
-ALTER PIPE MANAGE_DB.pipes.employee_pipe SET PIPE_EXECUTION_PAUSED = TRUE;
-```
-
--- Verify pipe is paused and has pendingFileCount 0 
-```sql
-SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe');
-```
-
-
--- Recreate the pipe to change the COPY statement in the definition
-
-```sql
-CREATE OR REPLACE pipe MANAGE_DB.pipes.employee_pipe
-auto_ingest = TRUE
-AS
-COPY INTO OUR_FIRST_DB.PUBLIC.employees2
-FROM @MANAGE_DB.external_stages.csv_folder ;
-```
-```sql
-ALTER PIPE  MANAGE_DB.pipes.employee_pipe refresh;
-```
-
--- List files in stage
-
-```sql
-LIST @MANAGE_DB.external_stages.csv_folder ;
-```
-```sql
-SELECT * FROM OUR_FIRST_DB.PUBLIC.employees2;
-```
-
--- Reload files manually that where aleady in the bucket
-```sql
-COPY INTO OUR_FIRST_DB.PUBLIC.employees2
-FROM @MANAGE_DB.external_stages.csv_folder;  
-```
-
-
--- Resume pipe
-```sql
-ALTER PIPE MANAGE_DB.pipes.employee_pipe SET PIPE_EXECUTION_PAUSED = false;
-```
-
--- Verify pipe is running again
-```sql
-SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe') ;
-```
-
+Once registered, go back to the **Event Subscription** window, and the error should be resolved.
 
 ---
 
 ## Conclusion
 You have now successfully:
-- Created a storage integration for S3
-- Configured Snowpipe with S3 event notifications
-- Created and tested the pipe for auto-ingestion
-- Managed and monitored Snowpipe status
+- Created an Azure Storage Account and container for Snowpipe
+- Uploaded data to the Azure container
+- Configured Snowflake integration with Azure
+- Granted necessary permissions in Azure
 
-Your data is now continuously loaded into Snowflake using Snowpipe.
+Your data is now ready to be ingested into Snowflake using Snowpipe.
+
 
