@@ -109,7 +109,7 @@ To fully set up Snowpipe, you need to complete two additional steps:
 ---
 
 ## Step 7: Configuring Event Notifications
-1. In the left-hand side menu, look for **⚡Events** (⚡) and select it.
+1. In the left-hand side menu, look for **⚡Events** and select it.
 2. Click on **+ Event Subscription**.
 3. Enter the following details:
     - **Name**: Unique name for the event
@@ -138,6 +138,152 @@ To fully set up Snowpipe, you need to complete two additional steps:
 
 Once registered, go back to the **Event Subscription** window, and the error should be resolved.
 
+## Now we procced creating the snowpipe
+
+---- Create file format & stage objects ----
+
+-- create file format
+
+```sql
+create or replace file format snowpipe.public.fileformat_azure
+    TYPE = CSV
+    FIELD_DELIMITER = ','
+    SKIP_HEADER = 1;
+```    
+
+
+-- create stage object
+```sql
+create or replace stage snowpipe.public.stage_azure
+    STORAGE_INTEGRATION = azure_snowpipe_integration
+    URL = 'azure://snowflakeawsgcp.blob.core.windows.net/snowpipecsv'
+    FILE_FORMAT = fileformat_azure;
+```    
+    
+
+-- list files
+
+```sql
+LIST @snowpipe.public.stage_azure;
+```
+
+##  Creating Notification Integration in Snowflake
+
+### Go back to Azure for the Required Values
+1. Go to **Storage Account** → **Your Container** → **Queue**.
+2. Copy the **Queue URL**.
+
+### Create Notification Integration
+```sql
+CREATE OR REPLACE NOTIFICATION INTEGRATION snowpipe_event
+  ENABLED = TRUE
+  TYPE = QUEUE
+  NOTIFICATION_PROVIDER = AZURE_STORAGE_QUEUE
+  AZURE_STORAGE_QUEUE_PRIMARY_URI = 'https://snowflakeawsgcp.queue.core.windows.net/snowpipequeue'
+  AZURE_TENANT_ID = 'dae2c9e3-5d25-4628-a32f-6077ffaede10';
+```
+
+### Register Integration
+```sql
+DESC NOTIFICATION INTEGRATION snowpipe_event;
+```
+---
+### Granting Access after NOTIFICATION INTEGRATION snowpipe_event 
+
+- In the Snowflake description output, look for `AZURE_CONSENT_URL`.
+- Copy the **AZURE_CONSENT_URL** and paste it into a new browser window where you are logged into your Azure account to grant authorization.
+- After granting permission, you will receive an **Application ID**. Copy and save this ID for later use.
+
+---
+---
+## Step 5: Granting Permissions in Azure
+1. Go to **Storage Account** → **Your Container** → **Access Control (IAM)**.
+2. Click on the **+ Add** icon → **Add role assignment**.
+3. In the **Search Bar** = **Queue** , then **Storage Queue Data Contributor** and select it.
+4. Click **Next**.
+5. Click on **+ Select Members**.
+6. In the **Search Bar** on the right-side pop-up window, paste the **Application ID** copied from the Azure consent step.
+7. Select the application and click **Continue**.
+
+Permissions are now successfully granted to Snowflake.
+---
+
+  --query file before building de pipeline to verify the integration
+```sql  
+SELECT 
+$1,
+$2,
+$3,
+$4,
+$5,
+$6,
+$7,
+$8,
+$9,
+$10,
+$11,
+$12,
+$13,
+$14,
+$15,
+$16,
+$17,
+$18,
+$19,
+$20
+FROM @snowpipe.public.stage_azure;
+```
+
+
+-- create destination table
+```sql
+create or replace table snowpipe.public.happiness (
+    country_name varchar,
+    regional_indicator varchar,
+    ladder_score number(4,3),
+    standard_error number(4,3),
+    upperwhisker number(4,3),
+    lowerwhisker number(4,3),
+    logged_gdp number(5,3),
+    social_support number(4,3),
+    healthy_life_expectancy number(5,3),
+    freedom_to_make_life_choices number(4,3),
+    generosity number(4,3),
+    perceptions_of_corruption number(4,3),
+    ladder_score_in_dystopia number(4,3),
+    explained_by_log_gpd_per_capita number(4,3),
+    explained_by_social_support number(4,3),
+    explained_by_healthy_life_expectancy number(4,3),
+    explained_by_freedom_to_make_life_choices number(4,3),
+    explained_by_generosity number(4,3),
+    explained_by_perceptions_of_corruption number(4,3),
+    dystopia_residual number (4,3));
+```    
+
+```sql
+COPY INTO HAPPINESS
+FROM @snowpipe.public.stage_azure;
+```
+```sql
+SELECT * FROM snowpipe.public.happiness;
+```
+```sql
+TRUNCATE TABLE snowpipe.public.happiness;
+```
+
+ 
+-- Create pipe// after we have tested and delete we can created the pipe
+```sql
+  create pipe azure_pipe
+  auto_ingest = true
+  integration = 'SNOWPIPE_EVENT'
+  as
+  copy into snowpipe.public.happiness
+  from @snowpipe.public.stage_azure;
+```  
+```sql
+  SELECT SYSTEM$PIPE_STATUS( 'AZURE_PIPE' );
+```
 ---
 
 ## Conclusion
