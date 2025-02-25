@@ -34,7 +34,9 @@ CREATE OR REPLACE STORAGE INTEGRATION s3_int
   STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::110991281769:role/snowflake-access-role'
   STORAGE_ALLOWED_LOCATIONS = ('s3://snowflakeaws1985/csv/', 's3://snowflakeaws1985/json/', 's3://snowflakeaws1985/snowpipe/')
   COMMENT = 'This an optional comment';
-
+```
+## Describe  in case you havent configure your role
+```sql
 DESC INTEGRATION s3_int;
 ```
 
@@ -49,7 +51,8 @@ CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.employees (
   email STRING,
   location STRING,
   department STRING);
-
+```  
+```sql
 CREATE OR REPLACE FILE FORMAT MANAGE_DB.file_formats.csv_fileformat
   TYPE = CSV
   FIELD_DELIMITER = ','
@@ -72,15 +75,28 @@ LIST @MANAGE_DB.external_stages.csv_folder;
 
 ---
 
-## Step 4: Creating Pipe
+## Step 4: Creating Pipe & schema to keep things organized
+
+-- Create schema to keep things organized
+```sql
+CREATE OR REPLACE SCHEMA MANAGE_DB.pipes;
+```
+
+// Define pipe// at this stage you should test before creating the pipe to check if everyting work perfectly copy into == select
 ```sql
 CREATE OR REPLACE PIPE MANAGE_DB.pipes.employee_pipe
   AUTO_INGEST = TRUE
 AS
   COPY INTO OUR_FIRST_DB.PUBLIC.employees
   FROM @MANAGE_DB.external_stages.csv_folder;
-
+```  
+-- Describe pipe copy the value of notification_channel after this go into step 5 
+```sql
+DESC pipe employee_pipe;
 DESC PIPE MANAGE_DB.pipes.employee_pipe;
+```
+-- 
+```sql
 SELECT COUNT(*) FROM OUR_FIRST_DB.PUBLIC.employees;
 ```
 
@@ -100,13 +116,38 @@ SELECT COUNT(*) FROM OUR_FIRST_DB.PUBLIC.employees;
 ---
 
 ## Step 6: Testing and Error Handling
+
+-- Create file format object field_delimiter = '|' TO CREATE AND  ERROR IN DATA 3
+
+```sql
+CREATE OR REPLACE file format MANAGE_DB.file_formats.csv_fileformat
+    type = csv
+    field_delimiter = ','
+    skip_header = 1
+    null_if = ('NULL','null')
+    empty_field_as_null = TRUE;
+``` 
+```sql   
+SELECT COUNT(*) FROM OUR_FIRST_DB.PUBLIC.employees ; 
+``` 
+```sql
+ALTER PIPE employee_pipe refresh;
+```
+
+-- Validate pipe is actually working
 ```sql
 SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe');
-
+```
+-- Snowpipe error message
+```sql
 SELECT * FROM TABLE(VALIDATE_PIPE_LOAD(
   PIPE_NAME => 'MANAGE_DB.pipes.employee_pipe',
   START_TIME => DATEADD(HOUR,-2,CURRENT_TIMESTAMP())));
+```
 
+--COPY command history from table to see error massage
+
+```sql
 SELECT * FROM TABLE (INFORMATION_SCHEMA.COPY_HISTORY(
   TABLE_NAME  =>  'OUR_FIRST_DB.PUBLIC.EMPLOYEES',
   START_TIME => DATEADD(HOUR,-2,CURRENT_TIMESTAMP())));
@@ -116,16 +157,79 @@ SELECT * FROM TABLE (INFORMATION_SCHEMA.COPY_HISTORY(
 
 ## Step 7: Managing Pipes
 ```sql
+-- SHOW  ALL PIPES IN A LIST
 SHOW PIPES;
+-- SEARCHING FOR EMPLOYEES USING WILDCARDS
 SHOW PIPES LIKE '%employee%';
+-- SEARCHING FOR PIPE IN A UNIQUE DATABASE
 SHOW PIPES IN DATABASE MANAGE_DB;
+-- SEARCHING FOR SCHEMA 
 SHOW PIPES IN SCHEMA MANAGE_DB.pipes;
-
-ALTER PIPE MANAGE_DB.pipes.employee_pipe SET PIPE_EXECUTION_PAUSED = TRUE;
-SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe');
-
-ALTER PIPE MANAGE_DB.pipes.employee_pipe SET PIPE_EXECUTION_PAUSED = FALSE;
+-- ALSO COMBINING THE SEARCHING METHODS
+SHOW PIPES like '%employee%' in Database MANAGE_DB;
 ```
+## Changing pipe (alter stage or file format) --
+```sql
+-- Preparation table first
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.employees2 (
+  id INT,
+  first_name STRING,
+  last_name STRING,
+  email STRING,
+  location STRING,
+  department STRING
+  );
+```  
+-- Pause pipe// BASE PRACTICES PAUSE
+```sql
+ALTER PIPE MANAGE_DB.pipes.employee_pipe SET PIPE_EXECUTION_PAUSED = TRUE;
+```
+
+-- Verify pipe is paused and has pendingFileCount 0 
+```sql
+SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe');
+```
+
+
+-- Recreate the pipe to change the COPY statement in the definition
+
+```sql
+CREATE OR REPLACE pipe MANAGE_DB.pipes.employee_pipe
+auto_ingest = TRUE
+AS
+COPY INTO OUR_FIRST_DB.PUBLIC.employees2
+FROM @MANAGE_DB.external_stages.csv_folder ;
+```
+```sql
+ALTER PIPE  MANAGE_DB.pipes.employee_pipe refresh;
+```
+
+-- List files in stage
+
+```sql
+LIST @MANAGE_DB.external_stages.csv_folder ;
+```
+```sql
+SELECT * FROM OUR_FIRST_DB.PUBLIC.employees2;
+```
+
+-- Reload files manually that where aleady in the bucket
+```sql
+COPY INTO OUR_FIRST_DB.PUBLIC.employees2
+FROM @MANAGE_DB.external_stages.csv_folder;  
+```
+
+
+-- Resume pipe
+```sql
+ALTER PIPE MANAGE_DB.pipes.employee_pipe SET PIPE_EXECUTION_PAUSED = false;
+```
+
+-- Verify pipe is running again
+```sql
+SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe') ;
+```
+
 
 ---
 
