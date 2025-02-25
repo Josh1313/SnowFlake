@@ -1,190 +1,140 @@
-# Loading and Unloading Data from GCP to Snowflake
+# Setting up Snowpipe with AWS
 
 ## Overview
-This document provides a step-by-step guide on how to load and unload data between Google Cloud Platform (GCP) and Snowflake. We will cover creating buckets in GCP, configuring permissions, setting up Snowflake integration, and performing data loading and unloading.
+This document provides a step-by-step guide on how to set up Snowpipe in Snowflake using AWS S3 for continuous data loading. Snowpipe automatically loads data as soon as files appear in the S3 bucket, ideal for scenarios where data must be immediately available for analysis. This guide covers creating stages, testing with COPY commands, creating the pipe, and setting up S3 notifications.
 
 ## Index
-- [Step 1: Creating GCP Buckets](#step-1-creating-gcp-buckets)
-- [Step 2: Uploading Data to Buckets](#step-2-uploading-data-to-buckets)
-- [Step 3: Setting up Snowflake Integration](#step-3-setting-up-snowflake-integration)
-- [Step 4: Granting Permissions in GCP](#step-4-granting-permissions-in-gcp)
-- [Step 5: Loading Data into Snowflake](#step-5-loading-data-into-snowflake)
-- [Step 6: Unloading Data from Snowflake](#step-6-unloading-data-from-snowflake)
+- [What is Snowpipe?](#what-is-snowpipe)
+- [Step 1: Creating the Storage Integration](#step-1-creating-the-storage-integration)
+- [Step 2: Creating Table and File Format](#step-2-creating-table-and-file-format)
+- [Step 3: Creating Stage](#step-3-creating-stage)
+- [Step 4: Creating Pipe](#step-4-creating-pipe)
+- [Step 5: Setting up S3 Event Notification](#step-5-setting-up-s3-event-notification)
+- [Step 6: Testing and Error Handling](#step-6-testing-and-error-handling)
+- [Step 7: Managing Pipes](#step-7-managing-pipes)
 - [Conclusion](#conclusion)
 
 ---
 
-## Step 1: Creating GCP Buckets
-1. Sign in to your **GCP account**.
-2. In the top left, click on the **Menu (stack of pancakes)**.
-3. Navigate to **Cloud Storage** → **Buckets**.
-4. Click on **Get Started** → **Create a Bucket**.
-5. Enter a **Unique Name** (e.g., `csv-bucket` or `json-bucket`).
-6. **Location Type**: Choose **Multi-region** → **Continue**.
-7. **Storage Class**: Leave as default → **Continue**.
-8. **Access Control**: Leave as default → **Continue**.
-9. **Protection**: Leave as default → **Create**.
+## What is Snowpipe?
+Snowpipe is a continuous data loading feature in Snowflake that automatically loads files as they appear in an S3 bucket. It is designed for real-time data ingestion and is not intended for batch processing. Snowpipe uses event notifications from S3 to trigger data loading into Snowflake tables.
 
-Repeat the above steps to create additional buckets as needed for JSON or other file types.
+![alt text](image.png)
+
+![alt text](image-1.png)
 
 ---
 
-## Step 2: Uploading Data to Buckets
-1. Go to the **Bucket List** and select the bucket to upload files.
-2. Click **Upload** → **Files or Folders**.
-3. Browse and select the files to upload.
-4. Click **Upload**.
-
-You have now successfully created the buckets and uploaded data to each bucket.
-
----
-
-## Step 3: Setting up Snowflake Integration
-Use the bucket names from GCP in the following Snowflake commands.
-
+## Step 1: Creating the Storage Integration
 ```sql
-CREATE STORAGE INTEGRATION gcp_integration
+CREATE OR REPLACE STORAGE INTEGRATION s3_int
   TYPE = EXTERNAL_STAGE
-  STORAGE_PROVIDER = GCS
+  STORAGE_PROVIDER = S3
   ENABLED = TRUE
-  STORAGE_ALLOWED_LOCATIONS = ('gcs://Bucket-name/path', 'gcs://Bucket-name/path2');
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::110991281769:role/snowflake-access-role'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://snowflakeaws1985/csv/', 's3://snowflakeaws1985/json/', 's3://snowflakeaws1985/snowpipe/')
+  COMMENT = 'This an optional comment';
 
--- Describe integration object to get the required info
-DESC STORAGE INTEGRATION gcp_integration;
+DESC INTEGRATION s3_int;
 ```
 
 ---
 
-## Step 4: Granting Permissions in GCP
-1. Go to **Storage Account** → **Buckets**.
-2. Select the buckets created earlier.
-3. Click on **Permissions**.
-4. Click **Add Principal**.
-5. **New Principal**: Paste the value from `STORAGE_GCP_SERVICE_ACCOUNT` from the Snowflake `DESC` output.
-6. **Role**: Select **Storage Admin**.
-7. Click **Save**.
+## Step 2: Creating Table and File Format
+```sql
+CREATE OR REPLACE TABLE OUR_FIRST_DB.PUBLIC.employees (
+  id INT,
+  first_name STRING,
+  last_name STRING,
+  email STRING,
+  location STRING,
+  department STRING);
 
-Permissions are now successfully granted to Snowflake.
+CREATE OR REPLACE FILE FORMAT MANAGE_DB.file_formats.csv_fileformat
+  TYPE = CSV
+  FIELD_DELIMITER = ','
+  SKIP_HEADER = 1
+  NULL_IF = ('NULL','null')
+  EMPTY_FIELD_AS_NULL = TRUE;
+```
 
 ---
 
-## Step 5: Loading Data into Snowflake
+## Step 3: Creating Stage
 ```sql
-CREATE OR REPLACE FILE FORMAT demo_db.public.fileformat_gcp
-    TYPE = CSV
-    FIELD_DELIMITER = ','
-    SKIP_HEADER = 1;
+CREATE OR REPLACE STAGE MANAGE_DB.external_stages.csv_folder
+  URL = 's3://snowflakeaws1985/csv/snowpipe'
+  STORAGE_INTEGRATION = s3_int
+  FILE_FORMAT = MANAGE_DB.file_formats.csv_fileformat;
+
+LIST @MANAGE_DB.external_stages.csv_folder;
 ```
 
-```sql
-CREATE OR REPLACE STAGE demo_db.public.stage_gcp
-    STORAGE_INTEGRATION = gcp_integration
-    URL = 'gcs://snowflakegcp1985'
-    FILE_FORMAT = fileformat_gcp;
-```
-```sql
-LIST @demo_db.public.stage_gcp;
-```
----- Query files & Load data ----
+---
 
---query files
+## Step 4: Creating Pipe
 ```sql
-SELECT 
-$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-$12,$13,$14,$15,$16,$17,$18,$19,$20
-FROM @demo_db.public.stage_gcp;
+CREATE OR REPLACE PIPE MANAGE_DB.pipes.employee_pipe
+  AUTO_INGEST = TRUE
+AS
+  COPY INTO OUR_FIRST_DB.PUBLIC.employees
+  FROM @MANAGE_DB.external_stages.csv_folder;
+
+DESC PIPE MANAGE_DB.pipes.employee_pipe;
+SELECT COUNT(*) FROM OUR_FIRST_DB.PUBLIC.employees;
 ```
 
+---
+
+## Step 5: Setting up S3 Event Notification
+1. Go to **AWS Console** → **S3** → **Bucket** → **Properties**.
+2. Scroll to **Event Notifications** and click **Create Event Notification**.
+3. **Event Name**: Unique-name
+4. **Prefix**: `csv/snowpipe`
+5. **Suffix**: (Optional)
+6. **Event Type**: Select **All Object Create Events**
+7. **Destination**: Select **SQS**
+8. **SQS ARN**: Paste the value from Snowflake's Notification Channel
+9. Click **Save**.
+
+---
+
+## Step 6: Testing and Error Handling
 ```sql
-create or replace table happiness (
-    country_name varchar,
-    regional_indicator varchar,
-    ladder_score number(4,3),
-    standard_error number(4,3),
-    upperwhisker number(4,3),
-    lowerwhisker number(4,3),
-    logged_gdp number(5,3),
-    social_support number(4,3),
-    healthy_life_expectancy number(5,3),
-    freedom_to_make_life_choices number(4,3),
-    generosity number(4,3),
-    perceptions_of_corruption number(4,3),
-    ladder_score_in_dystopia number(4,3),
-    explained_by_log_gpd_per_capita number(4,3),
-    explained_by_social_support number(4,3),
-    explained_by_healthy_life_expectancy number(4,3),
-    explained_by_freedom_to_make_life_choices number(4,3),
-    explained_by_generosity number(4,3),
-    explained_by_perceptions_of_corruption number(4,3),
-    dystopia_residual number (4,3));
-```    
-    
-```sql 
-COPY INTO HAPPINESS
-FROM @demo_db.public.stage_gcp;
-```
-```sql
-SELECT * FROM HAPPINESS;
+SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe');
+
+SELECT * FROM TABLE(VALIDATE_PIPE_LOAD(
+  PIPE_NAME => 'MANAGE_DB.pipes.employee_pipe',
+  START_TIME => DATEADD(HOUR,-2,CURRENT_TIMESTAMP())));
+
+SELECT * FROM TABLE (INFORMATION_SCHEMA.COPY_HISTORY(
+  TABLE_NAME  =>  'OUR_FIRST_DB.PUBLIC.EMPLOYEES',
+  START_TIME => DATEADD(HOUR,-2,CURRENT_TIMESTAMP())));
 ```
 
-## ------- Unload data -----
---  In case you are not using it   
-```sql
-USE ROLE ACCOUNTADMIN;
-USE DATABASE DEMO_DB;
-```
+---
 
+## Step 7: Managing Pipes
+```sql
+SHOW PIPES;
+SHOW PIPES LIKE '%employee%';
+SHOW PIPES IN DATABASE MANAGE_DB;
+SHOW PIPES IN SCHEMA MANAGE_DB.pipes;
 
--- create integration object that contains the access information we have done this already
-```sql
-CREATE STORAGE INTEGRATION gcp_integration
-  TYPE = EXTERNAL_STAGE
-  STORAGE_PROVIDER = GCS
-  ENABLED = TRUE
-  STORAGE_ALLOWED_LOCATIONS = ('gcs://Bucket-name', 'gcs://Bucket-name');
-```
-  
-  
--- Create file format  we have done this already
-```sql
-create or replace file format demo_db.public.fileformat_gcp
-    TYPE = CSV
-    FIELD_DELIMITER = ','
-    SKIP_HEADER = 1;
-```
+ALTER PIPE MANAGE_DB.pipes.employee_pipe SET PIPE_EXECUTION_PAUSED = TRUE;
+SELECT SYSTEM$PIPE_STATUS('MANAGE_DB.pipes.employee_pipe');
 
--- Create stage object we start here again where we are cerating the subfolder csv_happines
-```sql
-create or replace stage demo_db.public.stage_gcp
-    STORAGE_INTEGRATION = gcp_integration
-    URL = 'gcs://snowflakegcp1985/csv_happiness'
-    FILE_FORMAT = fileformat_gcp;
-```    
-
--- In case we need to modifi the locations we can do that  using alter
-```sql
-ALTER STORAGE INTEGRATION gcp_integration
-SET  storage_allowed_locations=('gcs://snowflakebucketgcp', 'gcs://snowflakebucketgcpjson');
-```
-```sql
-SELECT * FROM HAPPINESS;
-```
-
--- into the destination the stage
-```sql
-COPY INTO @stage_gcp
-FROM
-HAPPINESS;
+ALTER PIPE MANAGE_DB.pipes.employee_pipe SET PIPE_EXECUTION_PAUSED = FALSE;
 ```
 
 ---
 
 ## Conclusion
 You have now successfully:
-- Created GCP buckets and uploaded data
-- Configured Snowflake integration with GCP
-- Loaded data from GCP into Snowflake
-- Unloaded data from Snowflake to GCP
+- Created a storage integration for S3
+- Configured Snowpipe with S3 event notifications
+- Created and tested the pipe for auto-ingestion
+- Managed and monitored Snowpipe status
 
-Your data is now seamlessly connected between GCP and Snowflake.
+Your data is now continuously loaded into Snowflake using Snowpipe.
 
