@@ -1,123 +1,98 @@
-# Loading Data from Azure to Snowflake
+# Loading and Unloading Data from GCP to Snowflake
 
 ## Overview
-This document provides a step-by-step guide on how to load data from an Azure Storage Account into Snowflake. We will cover the creation of a storage account, setting up containers, uploading files, and configuring Snowflake integration for seamless data loading.
+This document provides a step-by-step guide on how to load and unload data between Google Cloud Platform (GCP) and Snowflake. We will cover creating buckets in GCP, configuring permissions, setting up Snowflake integration, and performing data loading and unloading.
 
 ## Index
-- [Step 1: Creating an Azure Storage Account](#step-1-creating-an-azure-storage-account)
-- [Step 2: Creating and Uploading to Containers](#step-2-creating-and-uploading-to-containers)
-- [Step 3: Collecting Required Azure Information](#step-3-collecting-required-azure-information)
-- [Step 4: Integrating with Snowflake](#step-4-integrating-with-snowflake)
+- [Step 1: Creating GCP Buckets](#step-1-creating-gcp-buckets)
+- [Step 2: Uploading Data to Buckets](#step-2-uploading-data-to-buckets)
+- [Step 3: Setting up Snowflake Integration](#step-3-setting-up-snowflake-integration)
+- [Step 4: Granting Permissions in GCP](#step-4-granting-permissions-in-gcp)
+- [Step 5: Loading Data into Snowflake](#step-5-loading-data-into-snowflake)
+- [Step 6: Unloading Data from Snowflake](#step-6-unloading-data-from-snowflake)
 - [Conclusion](#conclusion)
 
 ---
 
-## Step 1: Creating an Azure Storage Account
-1. Ensure you have an **Azure account**.
-2. In the **Search Bar**, type **Storage Account** and select the **+ Create** button.
-3. Enter the following details:
-    - **Resource Group**: Use an existing one or create a new one (e.g., `snowflake`).
-    - **Storage Account Name**: Choose a unique name (e.g., `snowflakeawsgcp`).
-    - **Region**: Select the same region as your Snowflake account.
-    - **Redundancy**: Choose **Locally Redundant Storage (LRS)** for testing purposes.
-4. Click **Review + Create**, verify the details, and select **Create**.
+## Step 1: Creating GCP Buckets
+1. Sign in to your **GCP account**.
+2. In the top left, click on the **Menu (stack of pancakes)**.
+3. Navigate to **Cloud Storage** → **Buckets**.
+4. Click on **Get Started** → **Create a Bucket**.
+5. Enter a **Unique Name** (e.g., `csv-bucket` or `json-bucket`).
+6. **Location Type**: Choose **Multi-region** → **Continue**.
+7. **Storage Class**: Leave as default → **Continue**.
+8. **Access Control**: Leave as default → **Continue**.
+9. **Protection**: Leave as default → **Create**.
 
-At this point, your Azure Storage Account is successfully created.
-
----
-
-## Step 2: Creating and Uploading to Containers
-1. Go to **Storage Accounts** and select your newly created storage account.
-2. Navigate to **Data Storage** → **Containers**.
-3. Click **+ Container** and create two containers:
-    - One for CSV files (`csv`)
-    - One for JSON files (`json`)
-4. After creation, select a container and click **+ Upload**.
-5. Click **Browse File**, select the files to upload, and click **Upload**.
-6. Repeat the process for all files in both containers.
-
-Your data is now stored and ready for integration with Snowflake.
+Repeat the above steps to create additional buckets as needed for JSON or other file types.
 
 ---
 
-## Step 3: Collecting Required Azure Information
-Before integrating with Snowflake, collect the following details from Azure:
-1. **Tenant ID**:
-    - Search for **Tenant Properties** in the Azure search bar.
-    - Copy the **Tenant ID** from the **Tenant Properties** page.
-2. **Storage Account Name** (e.g., `snowflakeawsgcp`).
-3. **Container Names** (`csv`, `json`).
+## Step 2: Uploading Data to Buckets
+1. Go to the **Bucket List** and select the bucket to upload files.
+2. Click **Upload** → **Files or Folders**.
+3. Browse and select the files to upload.
+4. Click **Upload**.
+
+You have now successfully created the buckets and uploaded data to each bucket.
 
 ---
 
-## Step 4: Integrating with Snowflake
-Use the collected Azure details in the following Snowflake commands to create the integration.
+## Step 3: Setting up Snowflake Integration
+Use the bucket names from GCP in the following Snowflake commands.
 
 ```sql
-USE DATABASE DEMO_DB;
-
-CREATE OR REPLACE STORAGE INTEGRATION azure_integration
+CREATE STORAGE INTEGRATION gcp_integration
   TYPE = EXTERNAL_STAGE
-  STORAGE_PROVIDER = AZURE
+  STORAGE_PROVIDER = GCS
   ENABLED = TRUE
-  AZURE_TENANT_ID = '<tenant_id>'
-  STORAGE_ALLOWED_LOCATIONS = ('azure://your-storage-account-name.blob.core.windows.net/csv',
-  'azure://your-storage-account-name.blob.core.windows.net/json');
+  STORAGE_ALLOWED_LOCATIONS = ('gcs://Bucket-name/path', 'gcs://Bucket-name/path2');
 
--- Describe integration object to provide access
-DESC STORAGE integration azure_integration;
+-- Describe integration object to get the required info
+DESC STORAGE INTEGRATION gcp_integration;
 ```
 
-### Create Database File Format & Stage Objects
-```sql
-CREATE OR REPLACE DATABASE DEMO_DB;
-```
+---
 
+## Step 4: Granting Permissions in GCP
+1. Go to **Storage Account** → **Buckets**.
+2. Select the buckets created earlier.
+3. Click on **Permissions**.
+4. Click **Add Principal**.
+5. **New Principal**: Paste the value from `STORAGE_GCP_SERVICE_ACCOUNT` from the Snowflake `DESC` output.
+6. **Role**: Select **Storage Admin**.
+7. Click **Save**.
+
+Permissions are now successfully granted to Snowflake.
+
+---
+
+## Step 5: Loading Data into Snowflake
 ```sql
-CREATE OR REPLACE FILE FORMAT demo_db.public.fileformat_azure
+CREATE OR REPLACE FILE FORMAT demo_db.public.fileformat_gcp
     TYPE = CSV
     FIELD_DELIMITER = ','
     SKIP_HEADER = 1;
 ```
-```sql
-CREATE OR REPLACE STAGE demo_db.public.stage_azure
-    STORAGE_INTEGRATION = azure_integration
-    URL = 'azure://your-storage-account-name.blob.core.windows.net/csv'
-    FILE_FORMAT = fileformat_azure;
-```
 
-### Query & Load Data
 ```sql
-LIST @demo_db.public.stage_azure;
+CREATE OR REPLACE STAGE demo_db.public.stage_gcp
+    STORAGE_INTEGRATION = gcp_integration
+    URL = 'gcs://snowflakegcp1985'
+    FILE_FORMAT = fileformat_gcp;
 ```
-
+```sql
+LIST @demo_db.public.stage_gcp;
+```
 ---- Query files & Load data ----
 
 --query files
-
 ```sql
 SELECT 
-$1,
-$2,
-$3,
-$4,
-$5,
-$6,
-$7,
-$8,
-$9,
-$10,
-$11,
-$12,
-$13,
-$14,
-$15,
-$16,
-$17,
-$18,
-$19,
-$20
-FROM @demo_db.public.stage_azure;
+$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+$12,$13,$14,$15,$16,$17,$18,$19,$20
+FROM @demo_db.public.stage_gcp;
 ```
 
 ```sql
@@ -144,150 +119,72 @@ create or replace table happiness (
     dystopia_residual number (4,3));
 ```    
     
-```sql    
+```sql 
 COPY INTO HAPPINESS
-FROM @demo_db.public.stage_azure;
+FROM @demo_db.public.stage_gcp;
 ```
-
-
 ```sql
 SELECT * FROM HAPPINESS;
 ```
 
---- Load JSON ----
-
-```sql 
-create or replace file format demo_db.public.fileformat_azure_json
-    TYPE = JSON;
-```
-```sql  
-create or replace stage demo_db.public.stage_azure
-    STORAGE_INTEGRATION = azure_integration
-    URL = 'azure://snowflakeawsazure.blob.core.windows.net/json'
-    FILE_FORMAT = fileformat_azure_json; 
-```    
+## ------- Unload data -----
+--  In case you are not using it   
 ```sql
- DESC INTEGRATION azure_integration; 
+USE ROLE ACCOUNTADMIN;
+USE DATABASE DEMO_DB;
 ```
 
--- THIS IS JUST IN CASE WE NNED TO ALTE BY SET THE LOCATION OF OUR CONTAINERS
--- ALTER INTEGRATION azure_integration
--- SET STORAGE_ALLOWED_LOCATIONS =('azure://snowflakeawsazure.blob.core.windows.net/csv','azure://snowflakeawsazure.blob.core.windows.net/json')
 
-```sql  
-LIST  @demo_db.public.stage_azure;
-```
-
--- Query from stage  
-
+-- create integration object that contains the access information we have done this already
 ```sql
-SELECT * FROM @demo_db.public.stage_azure; 
-``` 
-
-
--- Query one attribute/column
-
-```sql
-SELECT $1:"Car Model" FROM @demo_db.public.stage_azure; 
+CREATE STORAGE INTEGRATION gcp_integration
+  TYPE = EXTERNAL_STAGE
+  STORAGE_PROVIDER = GCS
+  ENABLED = TRUE
+  STORAGE_ALLOWED_LOCATIONS = ('gcs://Bucket-name', 'gcs://Bucket-name');
 ```
   
--- Convert data type  
-```sql
-SELECT $1:"Car Model"::STRING FROM @demo_db.public.stage_azure; 
-```
-
--- Query all attributes  
-
-```sql
-SELECT 
-$1:"Car Model"::STRING, 
-$1:"Car Model Year"::INT,
-$1:"car make"::STRING, 
-$1:"first_name"::STRING,
-$1:"last_name"::STRING
-FROM @demo_db.public.stage_azure;   
-```
   
--- Query all attributes and use aliases 
-
+-- Create file format  we have done this already
 ```sql
-SELECT 
-$1:"Car Model"::STRING as car_model, 
-$1:"Car Model Year"::INT as car_model_year,
-$1:"car make"::STRING as "car make", 
-$1:"first_name"::STRING as first_name,
-$1:"last_name"::STRING as last_name
-FROM @demo_db.public.stage_azure;     
+create or replace file format demo_db.public.fileformat_gcp
+    TYPE = CSV
+    FIELD_DELIMITER = ','
+    SKIP_HEADER = 1;
 ```
 
+-- Create stage object we start here again where we are cerating the subfolder csv_happines
 ```sql
-Create or replace table car_owner (
-    car_model varchar, 
-    car_model_year int,
-    car_make varchar, 
-    first_name varchar,
-    last_name varchar);
+create or replace stage demo_db.public.stage_gcp
+    STORAGE_INTEGRATION = gcp_integration
+    URL = 'gcs://snowflakegcp1985/csv_happiness'
+    FILE_FORMAT = fileformat_gcp;
 ```    
-```sql 
-COPY INTO car_owner
+
+-- In case we need to modifi the locations we can do that  using alter
+```sql
+ALTER STORAGE INTEGRATION gcp_integration
+SET  storage_allowed_locations=('gcs://snowflakebucketgcp', 'gcs://snowflakebucketgcpjson');
+```
+```sql
+SELECT * FROM HAPPINESS;
+```
+
+-- into the destination the stage
+```sql
+COPY INTO @stage_gcp
 FROM
-(SELECT 
-$1:"Car Model"::STRING as car_model, 
-$1:"Car Model Year"::INT as car_model_year,
-$1:"car make"::STRING as "car make", 
-$1:"first_name"::STRING as first_name,
-$1:"last_name"::STRING as last_name
-FROM @demo_db.public.stage_azure);
-```
-
-```sql
-SELECT * FROM CAR_OWNER;
-```
-
-
--- Alternative: Using a raw file table step
-
-```sql
-truncate table car_owner;
-select * from car_owner;
-```
-
-```sql
-create or replace table car_owner_raw (
-  raw variant);
-```
-
-```sql
-COPY INTO car_owner_raw
-FROM @demo_db.public.stage_azure;
-```
-
-```sql
-SELECT * FROM car_owner_raw;
-```
-```sql    
-INSERT INTO car_owner  
-(SELECT 
-$1:"Car Model"::STRING as car_model, 
-$1:"Car Model Year"::INT as car_model_year,
-$1:"car make"::STRING as car_make, 
-$1:"first_name"::STRING as first_name,
-$1:"last_name"::STRING as last_name
-FROM car_owner_raw)  ;
-```
-  
-```sql  
-select * from car_owner;
+HAPPINESS;
 ```
 
 ---
 
 ## Conclusion
 You have now successfully:
-- Created an Azure Storage Account
-- Configured and uploaded files into Azure containers
-- Retrieved the necessary details for integration
-- Set up Snowflake integration for data loading
+- Created GCP buckets and uploaded data
+- Configured Snowflake integration with GCP
+- Loaded data from GCP into Snowflake
+- Unloaded data from Snowflake to GCP
 
-Your data is now ready to be accessed and processed in Snowflake.
+Your data is now seamlessly connected between GCP and Snowflake.
 
