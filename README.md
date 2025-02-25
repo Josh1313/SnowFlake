@@ -109,8 +109,8 @@ SELECT COUNT(*) FROM OUR_FIRST_DB.PUBLIC.employees;
 4. **Prefix**: `csv/snowpipe`
 5. **Suffix**: (Optional)
 6. **Event Type**: Select **All Object Create Events**
-7. **Destination**: Select **SQS**
-8. **SQS ARN**: Paste the value from Snowflake's Notification Channel
+7. **Destination**: Select **SQS queue**
+8. **Enter SQS queue ARN**: Paste the value from Snowflake's Notification Channel
 9. Click **Save**.
 
 ---
