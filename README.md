@@ -82,13 +82,13 @@ LIST @MANAGE_DB.external_stages.csv_folder;
 CREATE OR REPLACE SCHEMA MANAGE_DB.pipes;
 ```
 
-// Define pipe// at this stage you should test before creating the pipe to check if everyting work perfectly copy into == select
+-- Define pipe// at this stage you should test before creating the pipe to check if everyting work perfectly copy into == select
 ```sql
 CREATE OR REPLACE PIPE MANAGE_DB.pipes.employee_pipe
-  AUTO_INGEST = TRUE
+AUTO_INGEST = TRUE
 AS
-  COPY INTO OUR_FIRST_DB.PUBLIC.employees
-  FROM @MANAGE_DB.external_stages.csv_folder;
+COPY INTO OUR_FIRST_DB.PUBLIC.employees
+FROM @MANAGE_DB.external_stages.csv_folder;
 ```  
 -- Describe pipe copy the value of notification_channel after this go into step 5 
 ```sql
