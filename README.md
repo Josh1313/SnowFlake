@@ -91,9 +91,6 @@ SELECT * FROM OUR_FIRST_DB.public.test at (OFFSET => -60*1.5);
 ```
 
 ### Method 2: Using Timestamp
-```sql
-SELECT * FROM OUR_FIRST_DB.public.test before (timestamp => '2021-04-15 17:47:50.581'::timestamp);
-```
 
 -- Setting up table
 ```sql
@@ -173,7 +170,7 @@ SELECT * FROM OUR_FIRST_DB.public.test before (statement =>'019b9ee5-0500-8473-0
 ```
 ### Test do it yourself
 
-# practice
+### Practice
 
 -- if any error executed one by one
 ```sql
@@ -268,7 +265,7 @@ SELECT * FROM OUR_FIRST_DB.public.test before (statement =>'01baa5ef-030c-7223-0
 SELECT * FROM OUR_FIRST_DB.public.test;
 ```
 
-# This happens because is before the creation because once we used before we use the command create or replace meaning dropping the table is a new one
+-- This happens because is before the creation because once we used before we use the command create or replace meaning dropping the table is a new one
 
 ```sql
 CREATE OR REPLACE TABLE OUR_FIRST_DB.public.test as
