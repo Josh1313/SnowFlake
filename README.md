@@ -63,10 +63,32 @@ CREATE OR REPLACE STORAGE INTEGRATION azure_integration
   AZURE_TENANT_ID = '<tenant_id>'
   STORAGE_ALLOWED_LOCATIONS = ('azure://your-storage-account-name.blob.core.windows.net/csv',
   'azure://your-storage-account-name.blob.core.windows.net/json');
+```
 
--- Describe integration object to provide access
+###  Describe integration object to provide access
+```sql
 DESC STORAGE integration azure_integration;
 ```
+---
+### Granting Access after STORAGE integration azure_integration 
+
+- In the Snowflake description output, look for `AZURE_CONSENT_URL`.
+- Copy the **AZURE_CONSENT_URL** and paste it into a new browser window where you are logged into your Azure account to grant authorization.
+- After granting permission, you will receive an **Application ID**. Copy and save this ID for later use.
+
+---
+---
+## Step 5: Granting Permissions in Azure
+1. Go to **Storage Account** → **Your Container** → **Access Control (IAM)**.
+2. Click on the **+ Add** icon → **Add role assignment**.
+3. In the **Search Bar**  == **Storage Blob Data Reader** and select it.
+4. Click **Next**.
+5. Click on **+ Select Members**.
+6. In the **Search Bar** on the right-side pop-up window, paste the **Application ID** copied from the Azure consent step.
+7. Select the application and click **Continue**.
+
+Permissions are now successfully granted to Snowflake.
+---
 
 ### Create Database File Format & Stage Objects
 ```sql
