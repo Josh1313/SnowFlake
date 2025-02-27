@@ -22,82 +22,16 @@ By choosing the right type of table based on data usage and retention requiremen
 ![alt text](image.png)
 
 ## Permanent Tables and Databases
-## Permanent Tables
+## Permanent Transient Databases
 Permanent tables provide full data retention and Failsafe protection, making them suitable for critical data that requires long-term storage and recovery.
 
 ```sql
 CREATE OR REPLACE DATABASE PDB;
+CREATE TEMPORARY DATABASE temp;
+CREATE OR REPLACE TRANSIENT DATABASE PDB;
+SHOW DATABASES;
 ```
-```sql
-CREATE OR REPLACE TABLE PDB.public.customers (
-  id int,
-  first_name string,
-  last_name string,
-  email string,
-  gender string,
-  Job string,
-  Phone string);
-```
-```sql  
-CREATE OR REPLACE TABLE PDB.public.helper (
-  id int,
-  first_name string,
-  last_name string,
-  email string,
-  gender string,
-  Job string,
-  Phone string);
-```  
-    
-### Stage and file format
-```sql
-CREATE OR REPLACE FILE FORMAT MANAGE_DB.file_formats.csv_file
-    type = csv
-    field_delimiter = ','
-    skip_header = 1
-```    
-```sql    
-CREATE OR REPLACE STAGE MANAGE_DB.external_stages.time_travel_stage
-    URL = 's3://data-snowflake-fundamentals/time-travel/'
-    file_format = MANAGE_DB.file_formats.csv_file;
-```    
-```sql    
-LIST  @MANAGE_DB.external_stages.time_travel_stage;
-```
-
-
-### Copy data and insert in table
-```sql
-COPY INTO PDB.public.helper
-FROM @MANAGE_DB.external_stages.time_travel_stage
-files = ('customers.csv');
-```
-
-```sql
-SELECT * FROM PDB.public.helper;
-```
-```sql
-INSERT INTO PDB.public.customers
-SELECT
-t1.ID
-,t1.FIRST_NAME	
-,t1.LAST_NAME	
-,t1.EMAIL	
-,t1.GENDER	
-,t1.JOB
-,t1.PHONE
- FROM PDB.public.helper t1
-CROSS JOIN (SELECT * FROM PDB.public.helper) t2
-CROSS JOIN (SELECT TOP 100 * FROM PDB.public.helper) t3;
-```
-
--- Show table and validate
-
-```sql
-SHOW TABLES;
-```
-
-###  Permanent tables
+### Permanent Tables
 ```sql
 USE OUR_FIRST_DB
 ```
@@ -135,11 +69,11 @@ SELECT 	ID,
 		ACTIVE_BYTES / (1024*1024*1024) AS ACTIVE_STORAGE_USED_GB,
 		TIME_TRAVEL_BYTES / (1024*1024*1024) AS TIME_TRAVEL_STORAGE_USED_GB,
 		FAILSAFE_BYTES / (1024*1024*1024) AS FAILSAFE_STORAGE_USED_GB,
-        IS_TRANSIENT,
-        DELETED,
-        TABLE_CREATED,
-        TABLE_DROPPED,
-        TABLE_ENTERED_FAILSAFE
+    IS_TRANSIENT,
+    DELETED,
+    TABLE_CREATED,
+    TABLE_DROPPED,
+    TABLE_ENTERED_FAILSAFE
 FROM SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS
 --WHERE TABLE_CATALOG ='PDB'
 WHERE TABLE_DROPPED is not null
