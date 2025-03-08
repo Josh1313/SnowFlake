@@ -330,9 +330,20 @@ DROP STAGE IF EXISTS EXERCISE_DB.PUBLIC.EXERCISE_DB;
 
 ## File formats Objects
 
+ Create new stage
+ ```sql
+ CREATE OR REPLACE STAGE MANAGE_DB.external_stages.aws_stage_errorex
+    url='s3://bucketsnowflakes4';
+```
+ 
+ List files in stage
+ ```sql
+ LIST @MANAGE_DB.external_stages.aws_stage_errorex;
+ ```
+
 
  
-// Specifying file_format in Copy command
+ Specifying file_format in Copy command
 
 ```sql
 COPY INTO OUR_FIRST_DB.PUBLIC.ORDERS_EX
